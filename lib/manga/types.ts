@@ -13,6 +13,7 @@ export type Manga = {
   rakutenUrl?: string;
   rentalUrl?: string;
   source?: "mock" | "rakuten";
+  rawApiData?: Record<string, unknown>;
 };
 
 export type MangaSort = "popular" | "latest";

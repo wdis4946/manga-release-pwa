@@ -41,6 +41,13 @@ export function MangaCard({ manga }: MangaCardProps) {
           </div>
         </div>
       </Link>
+      {manga.rawApiData ? (
+        // This is intentionally hidden from the UI. Inspect the card element in
+        // browser DevTools to see every field returned by Rakuten Books.
+        <pre hidden data-rakuten-api-data>
+          {JSON.stringify(manga.rawApiData, null, 2)}
+        </pre>
+      ) : null}
     </article>
   );
 }

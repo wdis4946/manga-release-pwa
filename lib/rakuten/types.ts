@@ -1,4 +1,5 @@
 export type RakutenBook = {
+  [key: string]: unknown;
   title?: string;
   titleKana?: string;
   subTitle?: string;

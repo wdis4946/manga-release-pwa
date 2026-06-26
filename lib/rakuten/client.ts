@@ -221,6 +221,9 @@ function toManga(item: RakutenBook): Manga {
       `${title} レンタル`,
     )}`,
     source: "rakuten",
+    // Preserve the complete response item so newly available API fields can be
+    // inspected without adding each one to the UI-oriented Manga type.
+    rawApiData: item,
   };
 }
 
