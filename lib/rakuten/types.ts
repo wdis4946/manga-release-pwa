@@ -7,6 +7,7 @@ export type RakutenBook = {
   itemCaption?: string;
   isbn?: string;
   salesDate?: string;
+  booksGenreId?: string;
   itemUrl?: string;
   affiliateUrl?: string;
   smallImageUrl?: string;

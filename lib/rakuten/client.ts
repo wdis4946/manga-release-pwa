@@ -172,7 +172,7 @@ function toManga(item: RakutenBook): Manga {
     description: item.itemCaption ?? "説明文はまだありません。",
     coverImageUrl:
       item.largeImageUrl ?? item.mediumImageUrl ?? item.smallImageUrl ?? "",
-    genres: ["コミック"],
+    genres: parseBooksGenreIds(item.booksGenreId),
     popularityScore: 0,
     latestVolumeNumber: extractVolumeNumber(title),
     nextReleaseDate: normalizeSalesDate(item.salesDate),
@@ -186,6 +186,17 @@ function toManga(item: RakutenBook): Manga {
 
 function isCompleteManga(manga: Manga): boolean {
   return Boolean(manga.title && manga.coverImageUrl);
+}
+
+function parseBooksGenreIds(booksGenreId?: string): string[] {
+  if (!booksGenreId) {
+    return [];
+  }
+
+  return booksGenreId
+    .split("/")
+    .map((genreId) => genreId.trim())
+    .filter(Boolean);
 }
 
 function extractVolumeNumber(title: string): number {
