@@ -25,6 +25,7 @@ export async function fetchRakutenManga({
   });
 
   const response = await fetch(url, {
+    headers: createRakutenRequestHeaders(),
     // Keep Rakuten data fresh, while avoiding an external call on every request.
     next: { revalidate: 60 * 30 },
   });
@@ -45,6 +46,7 @@ export async function fetchRakutenMangaByIsbn(
   params.set("hits", "1");
 
   const response = await fetch(`${RAKUTEN_BOOKS_ENDPOINT}?${params}`, {
+    headers: createRakutenRequestHeaders(),
     next: { revalidate: 60 * 60 },
   });
 
@@ -127,6 +129,23 @@ function getRakutenCredentials(): {
     applicationId,
     accessKey,
     affiliateId: process.env.RAKUTEN_AFFILIATE_ID,
+  };
+}
+
+function createRakutenRequestHeaders(): HeadersInit {
+  const appOrigin = process.env.APP_ORIGIN;
+
+  if (!appOrigin) {
+    throw new Error(
+      "APP_ORIGIN is not configured. Set it to your allowed website origin, for example https://manga-release-pwa.vercel.app.",
+    );
+  }
+
+  const origin = appOrigin.replace(/\/+$/, "");
+
+  return {
+    Origin: origin,
+    Referer: `${origin}/`,
   };
 }
 
