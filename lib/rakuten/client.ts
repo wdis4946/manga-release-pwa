@@ -2,7 +2,7 @@ import type { Manga, MangaSort } from "@/lib/manga/types";
 import type { RakutenBook, RakutenBooksResponse } from "./types";
 
 const RAKUTEN_BOOKS_ENDPOINT =
-  "https://app.rakuten.co.jp/services/api/BooksBook/Search/20170404";
+  "https://openapi.rakuten.co.jp/services/api/BooksBook/Search/20170404";
 
 type FetchRakutenMangaOptions = {
   sort: MangaSort;
@@ -15,16 +15,10 @@ export async function fetchRakutenManga({
   page = 1,
   hits = 30,
 }: FetchRakutenMangaOptions): Promise<Manga[]> {
-  const applicationId = process.env.RAKUTEN_APPLICATION_ID;
-
-  if (!applicationId) {
-    throw new Error("RAKUTEN_APPLICATION_ID is not configured.");
-  }
+  const credentials = getRakutenCredentials();
 
   const url = buildRakutenSearchUrl({
-    applicationId,
-    accessKey: process.env.RAKUTEN_ACCESS_KEY,
-    affiliateId: process.env.RAKUTEN_AFFILIATE_ID,
+    ...credentials,
     sort,
     page,
     hits,
@@ -35,9 +29,7 @@ export async function fetchRakutenManga({
     next: { revalidate: 60 * 30 },
   });
 
-  if (!response.ok) {
-    throw new Error(`Rakuten Books API failed: ${response.status}`);
-  }
+  await throwIfRakutenError(response);
 
   const data = (await response.json()) as RakutenBooksResponse;
   return (data.Items ?? []).map(toManga).filter(isCompleteManga);
@@ -46,17 +38,9 @@ export async function fetchRakutenManga({
 export async function fetchRakutenMangaByIsbn(
   isbn: string,
 ): Promise<Manga | undefined> {
-  const applicationId = process.env.RAKUTEN_APPLICATION_ID;
+  const credentials = getRakutenCredentials();
 
-  if (!applicationId) {
-    throw new Error("RAKUTEN_APPLICATION_ID is not configured.");
-  }
-
-  const params = createBaseParams({
-    applicationId,
-    accessKey: process.env.RAKUTEN_ACCESS_KEY,
-    affiliateId: process.env.RAKUTEN_AFFILIATE_ID,
-  });
+  const params = createBaseParams(credentials);
   params.set("isbn", isbn);
   params.set("hits", "1");
 
@@ -64,9 +48,7 @@ export async function fetchRakutenMangaByIsbn(
     next: { revalidate: 60 * 60 },
   });
 
-  if (!response.ok) {
-    throw new Error(`Rakuten Books API failed: ${response.status}`);
-  }
+  await throwIfRakutenError(response);
 
   const data = (await response.json()) as RakutenBooksResponse;
   const item = data.Items?.[0];
@@ -76,7 +58,7 @@ export async function fetchRakutenMangaByIsbn(
 
 type BuildSearchUrlOptions = {
   applicationId: string;
-  accessKey?: string;
+  accessKey: string;
   affiliateId?: string;
   sort: MangaSort;
   page: number;
@@ -109,7 +91,7 @@ function createBaseParams({
   affiliateId,
 }: {
   applicationId: string;
-  accessKey?: string;
+  accessKey: string;
   affiliateId?: string;
 }): URLSearchParams {
   const params = new URLSearchParams({
@@ -118,15 +100,45 @@ function createBaseParams({
     formatVersion: "2",
   });
 
-  if (accessKey) {
-    params.set("accessKey", accessKey);
-  }
+  params.set("accessKey", accessKey);
 
   if (affiliateId) {
     params.set("affiliateId", affiliateId);
   }
 
   return params;
+}
+
+function getRakutenCredentials(): {
+  applicationId: string;
+  accessKey: string;
+  affiliateId?: string;
+} {
+  const applicationId = process.env.RAKUTEN_APPLICATION_ID;
+  const accessKey = process.env.RAKUTEN_ACCESS_KEY;
+
+  if (!applicationId || !accessKey) {
+    throw new Error(
+      "Rakuten credentials are not configured. Set RAKUTEN_APPLICATION_ID and RAKUTEN_ACCESS_KEY.",
+    );
+  }
+
+  return {
+    applicationId,
+    accessKey,
+    affiliateId: process.env.RAKUTEN_AFFILIATE_ID,
+  };
+}
+
+async function throwIfRakutenError(response: Response): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+
+  const body = await response.text();
+  throw new Error(
+    `Rakuten Books API failed: ${response.status} ${body || response.statusText}`,
+  );
 }
 
 function toManga(item: RakutenBook): Manga {
