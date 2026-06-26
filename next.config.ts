@@ -1,4 +1,4 @@
-import type { NextConfig } from "next";
+﻿import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   images: {
@@ -6,6 +6,14 @@ const nextConfig: NextConfig = {
       {
         protocol: "https",
         hostname: "placehold.co",
+      },
+      {
+        protocol: "https",
+        hostname: "thumbnail.image.rakuten.co.jp",
+      },
+      {
+        protocol: "https",
+        hostname: "books.r10s.jp",
       },
     ],
   },

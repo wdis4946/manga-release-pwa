@@ -1,5 +1,6 @@
 export type Manga = {
   id: string;
+  isbn?: string;
   title: string;
   authorName: string;
   description: string;
@@ -11,9 +12,10 @@ export type Manga = {
   amazonUrl?: string;
   rakutenUrl?: string;
   rentalUrl?: string;
+  source?: "mock" | "rakuten";
 };
 
-export type MangaSort = "popular" | "latest" | "release_date" | "title";
+export type MangaSort = "popular" | "latest";
 
 export type MangaFilters = {
   sort?: MangaSort;

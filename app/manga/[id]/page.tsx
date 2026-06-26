@@ -1,8 +1,8 @@
-import Image from "next/image";
+﻿import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PurchaseButtons } from "@/components/PurchaseButtons";
-import { getMangaById } from "@/lib/manga/filters";
+import { getMangaDetail } from "@/lib/manga/service";
 import { formatReleaseDate, isSoonRelease } from "@/lib/utils/date";
 
 type MangaDetailPageProps = {
@@ -13,7 +13,7 @@ type MangaDetailPageProps = {
 
 export default async function MangaDetailPage({ params }: MangaDetailPageProps) {
   const { id } = await params;
-  const manga = getMangaById(id);
+  const manga = await getMangaDetail(id);
 
   if (!manga) {
     notFound();
@@ -76,18 +76,16 @@ export default async function MangaDetailPage({ params }: MangaDetailPageProps) 
           </div>
 
           <div className="rounded-md bg-white p-5 ring-1 ring-stone-200">
-            <h2 className="text-base font-bold text-stone-950">新刊情報</h2>
+            <h2 className="text-base font-bold text-stone-950">書籍情報</h2>
             <dl className="mt-3 grid gap-3 text-sm sm:grid-cols-2">
               <div className="rounded-md bg-stone-100 p-3">
-                <dt className="text-xs font-semibold text-stone-500">最新巻</dt>
+                <dt className="text-xs font-semibold text-stone-500">巻数</dt>
                 <dd className="mt-1 font-bold text-stone-950">
                   {manga.latestVolumeNumber}巻
                 </dd>
               </div>
               <div className="rounded-md bg-stone-100 p-3">
-                <dt className="text-xs font-semibold text-stone-500">
-                  次巻発売日
-                </dt>
+                <dt className="text-xs font-semibold text-stone-500">発売日</dt>
                 <dd className="mt-1 font-bold text-stone-950">
                   {formatReleaseDate(manga.nextReleaseDate)}
                 </dd>
