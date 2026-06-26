@@ -1,8 +1,14 @@
 import type { Manga, MangaSort } from "@/lib/manga/types";
-import type { RakutenBook, RakutenBooksResponse } from "./types";
+import type {
+  RakutenBook,
+  RakutenBooksGenreResponse,
+  RakutenBooksResponse,
+} from "./types";
 
 const RAKUTEN_BOOKS_ENDPOINT =
   "https://openapi.rakuten.co.jp/services/api/BooksBook/Search/20170404";
+const RAKUTEN_BOOKS_GENRE_ENDPOINT =
+  "https://openapi.rakuten.co.jp/services/api/BooksGenre/Search/20121128";
 
 type FetchRakutenMangaOptions = {
   sort: MangaSort;
@@ -58,6 +64,22 @@ export async function fetchRakutenMangaByIsbn(
   return item ? toManga(item) : undefined;
 }
 
+export async function fetchRakutenBooksGenreNames(
+  booksGenreIds: string[],
+): Promise<string[]> {
+  const uniqueGenreIds = Array.from(new Set(booksGenreIds)).filter(Boolean);
+
+  if (uniqueGenreIds.length === 0) {
+    return [];
+  }
+
+  const genreNames = await Promise.all(
+    uniqueGenreIds.map((booksGenreId) => fetchRakutenBooksGenreName(booksGenreId)),
+  );
+
+  return Array.from(new Set(genreNames.filter(isString)));
+}
+
 type BuildSearchUrlOptions = {
   applicationId: string;
   accessKey: string;
@@ -109,6 +131,24 @@ function createBaseParams({
   }
 
   return params;
+}
+
+async function fetchRakutenBooksGenreName(
+  booksGenreId: string,
+): Promise<string | undefined> {
+  const credentials = getRakutenCredentials();
+  const params = createBaseParams(credentials);
+  params.set("booksGenreId", booksGenreId);
+
+  const response = await fetch(`${RAKUTEN_BOOKS_GENRE_ENDPOINT}?${params}`, {
+    headers: createRakutenRequestHeaders(),
+    next: { revalidate: 60 * 60 * 24 },
+  });
+
+  await throwIfRakutenError(response);
+
+  const data = (await response.json()) as RakutenBooksGenreResponse;
+  return data.current?.booksGenreName;
 }
 
 function getRakutenCredentials(): {
@@ -186,6 +226,10 @@ function toManga(item: RakutenBook): Manga {
 
 function isCompleteManga(manga: Manga): boolean {
   return Boolean(manga.title && manga.coverImageUrl);
+}
+
+function isString(value: string | undefined): value is string {
+  return typeof value === "string" && value.length > 0;
 }
 
 function parseBooksGenreIds(booksGenreId?: string): string[] {

@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { PurchaseButtons } from "@/components/PurchaseButtons";
-import { getMangaDetail } from "@/lib/manga/service";
+import { getMangaDetail, getMangaGenreNames } from "@/lib/manga/service";
 import { formatReleaseDate, isSoonRelease } from "@/lib/utils/date";
 
 type MangaDetailPageProps = {
@@ -19,6 +19,7 @@ export default async function MangaDetailPage({ params }: MangaDetailPageProps) 
     notFound();
   }
 
+  const genreNames = await getMangaGenreNames(manga);
   const volumeNumbers = Array.from(
     { length: manga.latestVolumeNumber },
     (_, index) => manga.latestVolumeNumber - index,
@@ -60,16 +61,18 @@ export default async function MangaDetailPage({ params }: MangaDetailPageProps) 
             <p className="mt-2 text-sm font-medium text-stone-500">
               {manga.authorName}
             </p>
-            <div className="mt-4 flex flex-wrap gap-2">
-              {manga.genres.map((genre) => (
-                <span
-                  key={genre}
-                  className="rounded bg-stone-100 px-2 py-1 text-xs font-semibold text-stone-700"
-                >
-                  {genre}
-                </span>
-              ))}
-            </div>
+            {genreNames.length > 0 ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                {genreNames.map((genre) => (
+                  <span
+                    key={genre}
+                    className="rounded bg-stone-100 px-2 py-1 text-xs font-semibold text-stone-700"
+                  >
+                    {genre}
+                  </span>
+                ))}
+              </div>
+            ) : null}
             <p className="mt-5 text-sm leading-7 text-stone-700">
               {manga.description}
             </p>

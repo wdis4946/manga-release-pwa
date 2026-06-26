@@ -23,3 +23,15 @@ export type RakutenBooksResponse = {
   last?: number;
   hits?: number;
 };
+
+export type RakutenBooksGenre = {
+  booksGenreId?: string;
+  booksGenreName?: string;
+  genreLevel?: number;
+};
+
+export type RakutenBooksGenreResponse = {
+  current?: RakutenBooksGenre;
+  parents?: RakutenBooksGenre[];
+  children?: RakutenBooksGenre[];
+};

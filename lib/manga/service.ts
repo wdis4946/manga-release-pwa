@@ -1,4 +1,8 @@
-import { fetchRakutenManga, fetchRakutenMangaByIsbn } from "@/lib/rakuten/client";
+import {
+  fetchRakutenBooksGenreNames,
+  fetchRakutenManga,
+  fetchRakutenMangaByIsbn,
+} from "@/lib/rakuten/client";
 import { getFilteredManga, getMangaById } from "./filters";
 import { mangaList } from "./mock-data";
 import type { Manga, MangaFilters, MangaSort } from "./types";
@@ -36,6 +40,19 @@ export async function getMangaDetail(id: string): Promise<Manga | undefined> {
   } catch (error) {
     console.warn("Falling back to mock manga detail.", error);
     return mangaList.find((manga) => manga.isbn === id);
+  }
+}
+
+export async function getMangaGenreNames(manga: Manga): Promise<string[]> {
+  if (manga.source !== "rakuten") {
+    return manga.genres;
+  }
+
+  try {
+    return await fetchRakutenBooksGenreNames(manga.genres);
+  } catch (error) {
+    console.warn("Falling back to hidden genre names.", error);
+    return [];
   }
 }
 

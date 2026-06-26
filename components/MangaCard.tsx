@@ -39,16 +39,6 @@ export function MangaCard({ manga }: MangaCardProps) {
             <p>最新 {manga.latestVolumeNumber}巻</p>
             <p>{formatReleaseDate(manga.nextReleaseDate)}</p>
           </div>
-          <div className="flex flex-wrap gap-1">
-            {manga.genres.slice(0, 3).map((genre) => (
-              <span
-                key={genre}
-                className="rounded bg-stone-100 px-1.5 py-1 text-[11px] font-medium text-stone-600"
-              >
-                {genre}
-              </span>
-            ))}
-          </div>
         </div>
       </Link>
     </article>
