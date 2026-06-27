@@ -13,7 +13,7 @@ export type RakutenMangaItemRow = {
   author: string | null;
   author_kana: string | null;
   publisher_name: string | null;
-  book_size: number | null;
+  book_size: string | null;
   item_caption: string | null;
   sales_date: string | null;
   item_price: number | null;

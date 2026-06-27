@@ -11,7 +11,7 @@ export type RakutenBook = {
   author?: string;
   authorKana?: string;
   publisherName?: string;
-  size?: number;
+  size?: string;
   itemCaption?: string;
   isbn?: string;
   salesDate?: string;

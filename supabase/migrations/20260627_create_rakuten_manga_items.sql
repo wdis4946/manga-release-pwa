@@ -11,7 +11,7 @@ create table if not exists public.rakuten_manga_items (
   author text,
   author_kana text,
   publisher_name text,
-  book_size integer,
+  book_size text,
   item_caption text,
   sales_date text,
   item_price integer,
