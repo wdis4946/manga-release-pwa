@@ -54,23 +54,45 @@ export function toRakutenMangaItemRow(
     author: item.author ?? null,
     author_kana: item.authorKana ?? null,
     publisher_name: item.publisherName ?? null,
-    book_size: item.size ?? null,
+    book_size: toNullableText(item.size),
     item_caption: item.itemCaption ?? null,
     sales_date: item.salesDate ?? null,
-    item_price: item.itemPrice ?? null,
+    item_price: toNullableInteger(item.itemPrice),
     item_url: item.itemUrl ?? null,
     affiliate_url: item.affiliateUrl ?? null,
     small_image_url: item.smallImageUrl ?? null,
     medium_image_url: item.mediumImageUrl ?? null,
     large_image_url: item.largeImageUrl ?? null,
     chirayomi_url: item.chirayomiUrl ?? null,
-    availability: item.availability ?? null,
-    postage_flag: item.postageFlag ?? null,
-    limited_flag: item.limitedFlag ?? null,
-    review_count: item.reviewCount ?? null,
-    review_average: item.reviewAverage ?? null,
+    availability: toNullableInteger(item.availability),
+    postage_flag: toNullableInteger(item.postageFlag),
+    limited_flag: toNullableInteger(item.limitedFlag),
+    review_count: toNullableInteger(item.reviewCount),
+    review_average: toNullableNumber(item.reviewAverage),
     books_genre_id: item.booksGenreId ?? null,
     raw_response: item,
     last_fetched_at: fetchedAt,
   };
+}
+
+function toNullableText(value: string | number | undefined): string | null {
+  if (value === undefined || value === "") {
+    return null;
+  }
+
+  return String(value);
+}
+
+function toNullableInteger(value: string | number | undefined): number | null {
+  const number = toNullableNumber(value);
+  return number === null ? null : Math.trunc(number);
+}
+
+function toNullableNumber(value: string | number | undefined): number | null {
+  if (value === undefined || value === "") {
+    return null;
+  }
+
+  const number = Number(value);
+  return Number.isFinite(number) ? number : null;
 }

@@ -11,14 +11,14 @@ export type RakutenBook = {
   author?: string;
   authorKana?: string;
   publisherName?: string;
-  size?: string;
+  size?: string | number;
   itemCaption?: string;
   isbn?: string;
   salesDate?: string;
-  itemPrice?: number;
-  listPrice?: number;
-  discountRate?: number;
-  discountPrice?: number;
+  itemPrice?: number | string;
+  listPrice?: number | string;
+  discountRate?: number | string;
+  discountPrice?: number | string;
   booksGenreId?: string;
   itemUrl?: string;
   affiliateUrl?: string;
@@ -26,11 +26,11 @@ export type RakutenBook = {
   mediumImageUrl?: string;
   largeImageUrl?: string;
   chirayomiUrl?: string;
-  availability?: number;
-  postageFlag?: number;
-  limitedFlag?: number;
-  reviewCount?: number;
-  reviewAverage?: number;
+  availability?: number | string;
+  postageFlag?: number | string;
+  limitedFlag?: number | string;
+  reviewCount?: number | string;
+  reviewAverage?: number | string;
 };
 
 export type RakutenBooksResponse = {
