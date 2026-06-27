@@ -37,6 +37,9 @@ async function importRakutenManga(request: Request) {
       .not("children_discovered_at", "is", null)
       .is("completed_at", null)
       .neq("genre_id", COMIC_ROOT_GENRE_ID)
+      // Leaf genres have narrower result sets, so they reach titles beyond the
+      // global 3,000-item search window with far fewer duplicate ISBNs.
+      .order("is_leaf", { ascending: false, nullsFirst: false })
       .order("genre_id")
       .limit(1)
       .maybeSingle();
