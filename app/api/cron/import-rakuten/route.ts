@@ -7,11 +7,11 @@ import { toRakutenMangaItemRow } from "@/lib/rakuten/import";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 180;
 
 const COMIC_ROOT_GENRE_ID = "001001";
-const GENRES_TO_DISCOVER_PER_RUN = 5;
-const PAGES_PER_RUN = 5;
+const GENRES_TO_DISCOVER_PER_RUN = 10;
+const PAGES_PER_RUN = 20;
 const REQUEST_INTERVAL_MS = 1200;
 
 async function importRakutenManga(request: Request) {
