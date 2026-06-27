@@ -45,12 +45,10 @@ export async function fetchRakutenBookPage({
   // limited to products that happen to be purchasable at import time.
   url.searchParams.set("outOfStockFlag", "1");
 
-  const response = await fetch(url, {
+  const response = await fetchRakutenWithRetry(url, {
     headers: createRakutenRequestHeaders(),
     cache: "no-store",
   });
-
-  await throwIfRakutenError(response);
 
   const data = (await response.json()) as RakutenBooksResponse;
 
@@ -76,13 +74,11 @@ export async function fetchRakutenManga({
     hits,
   });
 
-  const response = await fetch(url, {
+  const response = await fetchRakutenWithRetry(url, {
     headers: createRakutenRequestHeaders(),
     // Keep Rakuten data fresh, while avoiding an external call on every request.
     next: { revalidate: 60 * 30 },
   });
-
-  await throwIfRakutenError(response);
 
   const data = (await response.json()) as RakutenBooksResponse;
   return (data.Items ?? []).map(toManga).filter(isCompleteManga);
@@ -97,12 +93,13 @@ export async function fetchRakutenMangaByIsbn(
   params.set("isbn", isbn);
   params.set("hits", "1");
 
-  const response = await fetch(`${RAKUTEN_BOOKS_ENDPOINT}?${params}`, {
-    headers: createRakutenRequestHeaders(),
-    next: { revalidate: 60 * 60 },
-  });
-
-  await throwIfRakutenError(response);
+  const response = await fetchRakutenWithRetry(
+    `${RAKUTEN_BOOKS_ENDPOINT}?${params}`,
+    {
+      headers: createRakutenRequestHeaders(),
+      next: { revalidate: 60 * 60 },
+    },
+  );
 
   const data = (await response.json()) as RakutenBooksResponse;
   const item = data.Items?.[0];
@@ -133,12 +130,13 @@ export async function fetchRakutenBooksGenre(
   const params = createBaseParams(credentials);
   params.set("booksGenreId", booksGenreId);
 
-  const response = await fetch(`${RAKUTEN_BOOKS_GENRE_ENDPOINT}?${params}`, {
-    headers: createRakutenRequestHeaders(),
-    cache: "no-store",
-  });
-
-  await throwIfRakutenError(response);
+  const response = await fetchRakutenWithRetry(
+    `${RAKUTEN_BOOKS_GENRE_ENDPOINT}?${params}`,
+    {
+      headers: createRakutenRequestHeaders(),
+      cache: "no-store",
+    },
+  );
 
   return (await response.json()) as RakutenBooksGenreResponse;
 }
@@ -247,15 +245,48 @@ function createRakutenRequestHeaders(): HeadersInit {
   };
 }
 
-async function throwIfRakutenError(response: Response): Promise<void> {
-  if (response.ok) {
-    return;
+async function fetchRakutenWithRetry(
+  input: Parameters<typeof fetch>[0],
+  init?: Parameters<typeof fetch>[1],
+): Promise<Response> {
+  const maxAttempts = 4;
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    const response = await fetch(input, init);
+
+    if (response.ok) {
+      return response;
+    }
+
+    const body = await response.text();
+
+    if (response.status !== 429 || attempt === maxAttempts) {
+      throw new Error(
+        `Rakuten Books API failed: ${response.status} ${body || response.statusText}`,
+      );
+    }
+
+    const retryAfterSeconds = Number(response.headers.get("retry-after"));
+    const retryAfterMs = Number.isFinite(retryAfterSeconds)
+      ? retryAfterSeconds * 1000
+      : 0;
+    const exponentialBackoffMs = 1000 * 2 ** (attempt - 1);
+    const waitMs =
+      Math.max(retryAfterMs, exponentialBackoffMs) +
+      Math.floor(Math.random() * 250);
+
+    console.warn("[Rakuten API] Rate limited; retrying.", {
+      attempt,
+      waitMs,
+    });
+    await delay(waitMs);
   }
 
-  const body = await response.text();
-  throw new Error(
-    `Rakuten Books API failed: ${response.status} ${body || response.statusText}`,
-  );
+  throw new Error("Rakuten Books API retry loop ended unexpectedly.");
+}
+
+function delay(milliseconds: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, milliseconds));
 }
 
 function toManga(item: RakutenBook): Manga {

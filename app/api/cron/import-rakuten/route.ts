@@ -12,7 +12,7 @@ export const maxDuration = 60;
 const COMIC_ROOT_GENRE_ID = "001001";
 const GENRES_TO_DISCOVER_PER_RUN = 5;
 const PAGES_PER_RUN = 5;
-const REQUEST_INTERVAL_MS = 400;
+const REQUEST_INTERVAL_MS = 1200;
 
 async function importRakutenManga(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
