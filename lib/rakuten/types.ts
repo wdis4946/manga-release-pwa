@@ -47,6 +47,7 @@ export type RakutenBooksGenre = {
   booksGenreId?: string;
   booksGenreName?: string;
   genreLevel?: number;
+  itemCount?: number | string;
 };
 
 export type RakutenBooksGenreResponse = {

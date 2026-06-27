@@ -14,6 +14,7 @@ type FetchRakutenMangaOptions = {
   sort: MangaSort;
   page?: number;
   hits?: number;
+  booksGenreId?: string;
 };
 
 export type RakutenBookPage = {
@@ -27,6 +28,7 @@ export async function fetchRakutenBookPage({
   sort,
   page = 1,
   hits = 30,
+  booksGenreId,
 }: FetchRakutenMangaOptions): Promise<RakutenBookPage> {
   const credentials = getRakutenCredentials();
   const url = new URL(
@@ -35,6 +37,7 @@ export async function fetchRakutenBookPage({
       sort,
       page,
       hits,
+      booksGenreId,
     }),
   );
 
@@ -123,6 +126,23 @@ export async function fetchRakutenBooksGenreNames(
   return Array.from(new Set(genreNames.filter(isString)));
 }
 
+export async function fetchRakutenBooksGenre(
+  booksGenreId: string,
+): Promise<RakutenBooksGenreResponse> {
+  const credentials = getRakutenCredentials();
+  const params = createBaseParams(credentials);
+  params.set("booksGenreId", booksGenreId);
+
+  const response = await fetch(`${RAKUTEN_BOOKS_GENRE_ENDPOINT}?${params}`, {
+    headers: createRakutenRequestHeaders(),
+    cache: "no-store",
+  });
+
+  await throwIfRakutenError(response);
+
+  return (await response.json()) as RakutenBooksGenreResponse;
+}
+
 type BuildSearchUrlOptions = {
   applicationId: string;
   accessKey: string;
@@ -130,6 +150,7 @@ type BuildSearchUrlOptions = {
   sort: MangaSort;
   page: number;
   hits: number;
+  booksGenreId?: string;
 };
 
 function buildRakutenSearchUrl({
@@ -139,6 +160,7 @@ function buildRakutenSearchUrl({
   sort,
   page,
   hits,
+  booksGenreId,
 }: BuildSearchUrlOptions): string {
   const params = createBaseParams({ applicationId, accessKey, affiliateId });
 
@@ -148,6 +170,10 @@ function buildRakutenSearchUrl({
   params.set("sort", sort === "popular" ? "sales" : "-releaseDate");
   params.set("hits", String(hits));
   params.set("page", String(page));
+
+  if (booksGenreId) {
+    params.set("booksGenreId", booksGenreId);
+  }
 
   return `${RAKUTEN_BOOKS_ENDPOINT}?${params}`;
 }
@@ -179,18 +205,7 @@ function createBaseParams({
 async function fetchRakutenBooksGenreName(
   booksGenreId: string,
 ): Promise<string | undefined> {
-  const credentials = getRakutenCredentials();
-  const params = createBaseParams(credentials);
-  params.set("booksGenreId", booksGenreId);
-
-  const response = await fetch(`${RAKUTEN_BOOKS_GENRE_ENDPOINT}?${params}`, {
-    headers: createRakutenRequestHeaders(),
-    next: { revalidate: 60 * 60 * 24 },
-  });
-
-  await throwIfRakutenError(response);
-
-  const data = (await response.json()) as RakutenBooksGenreResponse;
+  const data = await fetchRakutenBooksGenre(booksGenreId);
   return data.current?.booksGenreName;
 }
 
