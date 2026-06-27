@@ -3,17 +3,34 @@ export type RakutenBook = {
   title?: string;
   titleKana?: string;
   subTitle?: string;
+  subTitleKana?: string;
+  seriesName?: string;
+  seriesNameKana?: string;
+  contents?: string;
+  contentsKana?: string;
   author?: string;
+  authorKana?: string;
   publisherName?: string;
+  size?: number;
   itemCaption?: string;
   isbn?: string;
   salesDate?: string;
+  itemPrice?: number;
+  listPrice?: number;
+  discountRate?: number;
+  discountPrice?: number;
   booksGenreId?: string;
   itemUrl?: string;
   affiliateUrl?: string;
   smallImageUrl?: string;
   mediumImageUrl?: string;
   largeImageUrl?: string;
+  chirayomiUrl?: string;
+  availability?: number;
+  postageFlag?: number;
+  limitedFlag?: number;
+  reviewCount?: number;
+  reviewAverage?: number;
 };
 
 export type RakutenBooksResponse = {
@@ -23,6 +40,7 @@ export type RakutenBooksResponse = {
   first?: number;
   last?: number;
   hits?: number;
+  pageCount?: number;
 };
 
 export type RakutenBooksGenre = {

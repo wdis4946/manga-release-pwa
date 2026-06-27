@@ -16,6 +16,49 @@ type FetchRakutenMangaOptions = {
   hits?: number;
 };
 
+export type RakutenBookPage = {
+  items: RakutenBook[];
+  page: number;
+  pageCount: number;
+  count: number;
+};
+
+export async function fetchRakutenBookPage({
+  sort,
+  page = 1,
+  hits = 30,
+}: FetchRakutenMangaOptions): Promise<RakutenBookPage> {
+  const credentials = getRakutenCredentials();
+  const url = new URL(
+    buildRakutenSearchUrl({
+      ...credentials,
+      sort,
+      page,
+      hits,
+    }),
+  );
+
+  // The import captures unavailable items too, so the local snapshot is not
+  // limited to products that happen to be purchasable at import time.
+  url.searchParams.set("outOfStockFlag", "1");
+
+  const response = await fetch(url, {
+    headers: createRakutenRequestHeaders(),
+    cache: "no-store",
+  });
+
+  await throwIfRakutenError(response);
+
+  const data = (await response.json()) as RakutenBooksResponse;
+
+  return {
+    items: data.Items ?? [],
+    page: data.page ?? page,
+    pageCount: data.pageCount ?? 0,
+    count: data.count ?? 0,
+  };
+}
+
 export async function fetchRakutenManga({
   sort,
   page = 1,
