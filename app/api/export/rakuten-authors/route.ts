@@ -20,17 +20,24 @@ export async function GET(request: Request) {
   try {
     const supabase = createSupabaseAdminClient();
     const authors = new Set<string>();
-    let offset = 0;
+    let lastIsbn: string | undefined;
     let scannedRowCount = 0;
 
     while (true) {
-      const { data, error } = await supabase
+      let query = supabase
         .from("rakuten_manga_items")
         .select("isbn, author")
         .not("author", "is", null)
-        .order("author")
         .order("isbn")
-        .range(offset, offset + PAGE_SIZE - 1);
+        .limit(PAGE_SIZE);
+
+      // Keyset pagination uses the indexed ISBN primary key and avoids the
+      // increasingly expensive OFFSET and full author sort on every page.
+      if (lastIsbn) {
+        query = query.gt("isbn", lastIsbn);
+      }
+
+      const { data, error } = await query;
 
       if (error) {
         throw error;
@@ -50,7 +57,11 @@ export async function GET(request: Request) {
         break;
       }
 
-      offset += PAGE_SIZE;
+      lastIsbn = data.at(-1)?.isbn;
+
+      if (!lastIsbn) {
+        break;
+      }
     }
 
     const rows = Array.from(authors)
