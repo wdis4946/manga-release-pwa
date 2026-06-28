@@ -1,0 +1,22 @@
+export type MatchingIssue = {
+  isbn: string;
+  normalizedTitle: string;
+  issueType: "unmatched" | "ambiguous";
+  candidateCount: number;
+  candidateSeriesIds: string[];
+  isResolved: boolean;
+  detectedAt: string;
+  title: string;
+  author: string | null;
+  publisherName: string | null;
+  salesDate: string | null;
+  coverImageUrl: string | null;
+  itemUrl: string | null;
+};
+
+export type MangaSeriesCandidate = {
+  id: string;
+  title: string;
+  normalizedTitle: string;
+  description: string | null;
+};
