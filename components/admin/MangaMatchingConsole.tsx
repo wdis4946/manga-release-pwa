@@ -581,9 +581,12 @@ export function MangaMatchingConsole() {
                   key={candidate.id}
                   className="rounded-md border border-stone-200 p-3"
                 >
-                  <p className="text-sm font-bold text-stone-900">
+                  <Link
+                    href={`/admin/series?q=${encodeURIComponent(candidate.title)}`}
+                    className="block text-sm font-bold text-stone-900 hover:text-cyan-800 hover:underline"
+                  >
                     {candidate.title}
-                  </p>
+                  </Link>
                   <p className="mt-1 break-all font-mono text-[11px] text-stone-500">
                     {candidate.normalizedTitle}
                   </p>

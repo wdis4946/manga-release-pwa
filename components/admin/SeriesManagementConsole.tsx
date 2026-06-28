@@ -34,7 +34,13 @@ type SeriesDetailResponse = {
   items: ManagedSeriesItem[];
 };
 
-export function SeriesManagementConsole() {
+type SeriesManagementConsoleProps = {
+  initialQuery?: string;
+};
+
+export function SeriesManagementConsole({
+  initialQuery = "",
+}: SeriesManagementConsoleProps) {
   const router = useRouter();
   const [accessToken, setAccessToken] = useState("");
   const [series, setSeries] = useState<ManagedMangaSeries[]>([]);
@@ -42,7 +48,7 @@ export function SeriesManagementConsole() {
   const [selectedSeries, setSelectedSeries] =
     useState<ManagedMangaSeries | null>(null);
   const [items, setItems] = useState<ManagedSeriesItem[]>([]);
-  const [queryText, setQueryText] = useState("");
+  const [queryText, setQueryText] = useState(initialQuery);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
