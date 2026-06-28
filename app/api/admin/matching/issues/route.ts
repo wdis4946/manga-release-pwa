@@ -23,7 +23,8 @@ export async function GET(request: Request) {
       "isbn, normalized_title, issue_type, candidate_count, candidate_series_ids, is_resolved, detected_at",
       { count: "exact" },
     )
-    .order("updated_at", { ascending: false })
+    .order("normalized_title", { ascending: true })
+    .order("isbn", { ascending: true })
     .range(from, from + PAGE_SIZE - 1);
 
   if (status === "resolved") {
@@ -78,7 +79,8 @@ export async function GET(request: Request) {
       candidateSeriesIds: issue.candidate_series_ids,
       isResolved: issue.is_resolved,
       detectedAt: issue.detected_at,
-      title: item?.title ?? issue.normalized_title,
+      // Keep the original Rakuten title separate from the normalized matching key.
+      title: item?.title ?? "タイトル不明",
       author: item?.author ?? null,
       publisherName: item?.publisher_name ?? null,
       salesDate: item?.sales_date ?? null,
