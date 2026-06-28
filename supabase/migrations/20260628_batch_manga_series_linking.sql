@@ -32,6 +32,12 @@ begin
       from public.manga_series_items as linked
       where linked.isbn = item.isbn
     )
+    and not exists (
+      select 1
+      from public.manga_series_item_match_issues as issue
+      where issue.isbn = item.isbn
+        and issue.is_resolved = true
+    )
   order by item.isbn
   limit greatest(1, least(p_batch_size, 1000));
 
