@@ -19,14 +19,14 @@ export async function GET(request: Request) {
 
   try {
     const supabase = createSupabaseAdminClient();
-    const authors = new Set<string>();
+    const authors = new Map<string, string>();
     let lastIsbn: string | undefined;
     let scannedRowCount = 0;
 
     while (true) {
       let query = supabase
         .from("rakuten_manga_items")
-        .select("isbn, author")
+        .select("isbn, author, author_kana")
         .not("author", "is", null)
         .order("isbn")
         .limit(PAGE_SIZE);
@@ -47,9 +47,14 @@ export async function GET(request: Request) {
 
       for (const row of data ?? []) {
         const author = row.author?.trim();
+        const authorKana = row.author_kana?.trim() ?? "";
 
         if (author) {
-          authors.add(author);
+          const currentKana = authors.get(author);
+
+          if (currentKana === undefined || (!currentKana && authorKana)) {
+            authors.set(author, authorKana);
+          }
         }
       }
 
@@ -65,9 +70,12 @@ export async function GET(request: Request) {
     }
 
     const rows = Array.from(authors)
-      .sort((left, right) => left.localeCompare(right, "ja"))
-      .map(escapeCsvValue);
-    const csv = `author\r\n${rows.join("\r\n")}\r\n`;
+      .sort(([left], [right]) => left.localeCompare(right, "ja"))
+      .map(
+        ([author, authorKana]) =>
+          `${escapeCsvValue(author)},${escapeCsvValue(authorKana)}`,
+      );
+    const csv = `author,author_kana\r\n${rows.join("\r\n")}\r\n`;
 
     console.info("[Rakuten author export] CSV generated.", {
       authorCount: authors.size,
