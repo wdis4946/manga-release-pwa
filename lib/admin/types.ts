@@ -35,4 +35,5 @@ export type ManagedSeriesItem = {
   itemUrl: string | null;
   matchMethod: string;
   matchedAt: string;
+  rawResponse: Record<string, unknown> | null;
 };
