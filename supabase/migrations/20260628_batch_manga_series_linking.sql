@@ -87,7 +87,8 @@ begin
     normalized_title,
     issue_type,
     candidate_count,
-    candidate_series_ids
+    candidate_series_ids,
+    is_resolved
   )
   select
     candidate.isbn,
@@ -97,7 +98,9 @@ begin
       else 'ambiguous'
     end,
     candidate.candidate_count,
-    candidate.candidate_series_ids
+    candidate.candidate_series_ids,
+    candidate.isbn not like '978%'
+      and candidate.isbn not like '979%'
   from manga_link_candidates as candidate
   left join public.manga_series_items as linked
     on linked.isbn = candidate.isbn
@@ -109,6 +112,8 @@ begin
     issue_type = excluded.issue_type,
     candidate_count = excluded.candidate_count,
     candidate_series_ids = excluded.candidate_series_ids,
+    is_resolved = public.manga_series_item_match_issues.is_resolved
+      or excluded.is_resolved,
     updated_at = now();
 
   delete from public.manga_series_item_match_issues as issue
