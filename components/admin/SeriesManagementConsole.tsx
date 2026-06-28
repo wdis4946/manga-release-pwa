@@ -8,13 +8,16 @@ import {
   ArrowLeft,
   ArrowRight,
   BookOpen,
+  Check,
   ExternalLink,
   Link2Off,
   ListChecks,
   LoaderCircle,
   LogOut,
+  Pencil,
   RefreshCw,
   Search,
+  X,
 } from "lucide-react";
 import type {
   ManagedMangaSeries,
@@ -54,6 +57,9 @@ export function SeriesManagementConsole({
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [unlinkingIsbn, setUnlinkingIsbn] = useState<string | null>(null);
+  const [isEditingTitle, setIsEditingTitle] = useState(false);
+  const [editedTitle, setEditedTitle] = useState("");
+  const [isUpdatingTitle, setIsUpdatingTitle] = useState(false);
   const [error, setError] = useState("");
 
   const pageCount = Math.max(1, Math.ceil(total / 50));
@@ -153,6 +159,8 @@ export function SeriesManagementConsole({
 
       const data = (await response.json()) as SeriesDetailResponse;
       setSelectedSeries(data.series);
+      setEditedTitle(data.series.title);
+      setIsEditingTitle(false);
       setItems(data.items);
       setIsDetailLoading(false);
     },
@@ -231,6 +239,59 @@ export function SeriesManagementConsole({
       loadSeries(),
     ]);
     setUnlinkingIsbn(null);
+  }
+
+  async function updateTitle(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!selectedSeriesId || !editedTitle.trim()) {
+      return;
+    }
+
+    setIsUpdatingTitle(true);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ title: editedTitle.trim() }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError(
+        response.status === 409
+          ? "同じタイトルのシリーズがすでに存在します。"
+          : "シリーズタイトルを更新できませんでした。",
+      );
+      setIsUpdatingTitle(false);
+      return;
+    }
+
+    const data = (await response.json()) as {
+      series: Omit<ManagedMangaSeries, "itemCount">;
+    };
+    const updatedSeries = {
+      ...data.series,
+      itemCount: items.length,
+    };
+
+    setSelectedSeries(updatedSeries);
+    setSeries((current) =>
+      current.map((entry) =>
+        entry.id === updatedSeries.id
+          ? { ...entry, ...updatedSeries }
+          : entry,
+      ),
+    );
+    setEditedTitle(updatedSeries.title);
+    setIsEditingTitle(false);
+    setIsUpdatingTitle(false);
   }
 
   async function logout() {
@@ -372,9 +433,64 @@ export function SeriesManagementConsole({
               <div className="border-b border-stone-300 pb-4">
                 <div className="flex flex-wrap items-end justify-between gap-3">
                   <div>
-                    <h2 className="text-xl font-bold text-stone-950">
-                      {currentSeries.title}
-                    </h2>
+                    {isEditingTitle ? (
+                      <form
+                        onSubmit={(event) => void updateTitle(event)}
+                        className="flex max-w-2xl items-center gap-2"
+                      >
+                        <input
+                          autoFocus
+                          value={editedTitle}
+                          onChange={(event) => setEditedTitle(event.target.value)}
+                          className="h-10 min-w-0 flex-1 rounded-md border border-stone-300 px-3 text-base font-bold outline-none focus:border-cyan-700"
+                        />
+                        <button
+                          type="submit"
+                          title="保存"
+                          disabled={
+                            isUpdatingTitle ||
+                            !editedTitle.trim() ||
+                            editedTitle.trim() === currentSeries.title
+                          }
+                          className="flex size-10 items-center justify-center rounded-md bg-cyan-700 text-white hover:bg-cyan-800 disabled:opacity-40"
+                        >
+                          {isUpdatingTitle ? (
+                            <LoaderCircle className="size-4 animate-spin" />
+                          ) : (
+                            <Check className="size-4" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          title="キャンセル"
+                          disabled={isUpdatingTitle}
+                          onClick={() => {
+                            setEditedTitle(currentSeries.title);
+                            setIsEditingTitle(false);
+                          }}
+                          className="flex size-10 items-center justify-center rounded-md border border-stone-300 bg-white text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      </form>
+                    ) : (
+                      <div className="flex items-center gap-2">
+                        <h2 className="text-xl font-bold text-stone-950">
+                          {currentSeries.title}
+                        </h2>
+                        <button
+                          type="button"
+                          title="タイトルを編集"
+                          onClick={() => {
+                            setEditedTitle(currentSeries.title);
+                            setIsEditingTitle(true);
+                          }}
+                          className="flex size-8 shrink-0 items-center justify-center rounded-md border border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
+                        >
+                          <Pencil className="size-4" />
+                        </button>
+                      </div>
+                    )}
                     <p className="mt-1 break-all font-mono text-xs text-stone-500">
                       {currentSeries.normalizedTitle}
                     </p>

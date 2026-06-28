@@ -86,3 +86,44 @@ export async function GET(request: Request, context: RouteContext) {
     items: linkedItems,
   });
 }
+
+export async function PATCH(request: Request, context: RouteContext) {
+  const user = await getAdminUser(request);
+
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await context.params;
+  const body = (await request.json()) as { title?: string };
+  const title = body.title?.trim();
+
+  if (!title) {
+    return Response.json({ error: "Title is required." }, { status: 400 });
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("manga_series")
+    .update({
+      title,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", id)
+    .select("id, title, normalized_title, description")
+    .single();
+
+  if (error) {
+    const status = error.code === "23505" ? 409 : 500;
+    return Response.json({ error: error.message }, { status });
+  }
+
+  return Response.json({
+    series: {
+      id: data.id,
+      title: data.title,
+      normalizedTitle: data.normalized_title,
+      description: data.description,
+    },
+  });
+}
