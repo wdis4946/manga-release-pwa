@@ -20,3 +20,19 @@ export type MangaSeriesCandidate = {
   normalizedTitle: string;
   description: string | null;
 };
+
+export type ManagedMangaSeries = MangaSeriesCandidate & {
+  itemCount: number;
+};
+
+export type ManagedSeriesItem = {
+  isbn: string;
+  title: string;
+  author: string | null;
+  publisherName: string | null;
+  salesDate: string | null;
+  coverImageUrl: string | null;
+  itemUrl: string | null;
+  matchMethod: string;
+  matchedAt: string;
+};

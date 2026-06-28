@@ -1,6 +1,7 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
@@ -275,6 +276,13 @@ export function MangaMatchingConsole() {
             </p>
           </div>
           <div className="flex items-center gap-2">
+            <Link
+              href="/admin/series"
+              className="flex h-9 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+            >
+              <BookOpen className="size-4" aria-hidden="true" />
+              シリーズ管理
+            </Link>
             <button
               type="button"
               title="再読み込み"
