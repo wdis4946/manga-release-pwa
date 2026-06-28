@@ -46,6 +46,7 @@ export function MangaMatchingConsole() {
   const [isLoading, setIsLoading] = useState(true);
   const [isSearching, setIsSearching] = useState(false);
   const [isMutating, setIsMutating] = useState(false);
+  const [linkingSeriesId, setLinkingSeriesId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [showCreateSeries, setShowCreateSeries] = useState(false);
   const [newSeriesTitle, setNewSeriesTitle] = useState("");
@@ -180,6 +181,7 @@ export function MangaMatchingConsole() {
     }
 
     setIsMutating(true);
+    setLinkingSeriesId(seriesId);
     setError("");
     const response = await authorizedFetch("/api/admin/matching/link", {
       method: "POST",
@@ -193,11 +195,13 @@ export function MangaMatchingConsole() {
     if (!response.ok) {
       setError("シリーズへ紐づけできませんでした。");
       setIsMutating(false);
+      setLinkingSeriesId(null);
       return;
     }
 
     await loadIssues();
     setIsMutating(false);
+    setLinkingSeriesId(null);
   }
 
   async function ignoreIssue() {
@@ -581,7 +585,7 @@ export function MangaMatchingConsole() {
                     onClick={() => void linkToSeries(candidate.id)}
                     className="mt-3 flex h-8 w-full items-center justify-center gap-2 rounded-md bg-cyan-700 px-3 text-xs font-bold text-white hover:bg-cyan-800 disabled:opacity-40"
                   >
-                    {isMutating ? (
+                    {linkingSeriesId === candidate.id ? (
                       <LoaderCircle className="size-4 animate-spin" />
                     ) : (
                       <Link2 className="size-4" />
