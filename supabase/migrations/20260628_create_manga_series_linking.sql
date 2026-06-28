@@ -6,6 +6,7 @@ create table if not exists public.manga_series_item_match_issues (
     check (issue_type in ('unmatched', 'ambiguous')),
   candidate_count integer not null default 0,
   candidate_series_ids uuid[] not null default '{}',
+  is_resolved boolean not null default false,
   detected_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );

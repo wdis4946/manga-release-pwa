@@ -26,7 +26,12 @@ begin
   create temporary table manga_link_batch on commit drop as
   select item.isbn, item.normalized_title
   from public.rakuten_manga_items as item
-  where p_after_isbn is null or item.isbn > p_after_isbn
+  where (p_after_isbn is null or item.isbn > p_after_isbn)
+    and not exists (
+      select 1
+      from public.manga_series_items as linked
+      where linked.isbn = item.isbn
+    )
   order by item.isbn
   limit greatest(1, least(p_batch_size, 1000));
 
