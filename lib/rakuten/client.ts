@@ -15,6 +15,7 @@ type FetchRakutenMangaOptions = {
   page?: number;
   hits?: number;
   booksGenreId?: string;
+  includeSize?: boolean;
 };
 
 export type RakutenBookPage = {
