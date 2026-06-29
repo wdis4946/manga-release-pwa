@@ -46,6 +46,11 @@ export default async function MangaDetailPage({ params }: MangaDetailPageProps) 
               className="h-auto w-full object-cover"
             />
           </div>
+          {manga.rawApiData ? (
+            <pre hidden data-rakuten-api-data>
+              {JSON.stringify(manga.rawApiData, null, 2)}
+            </pre>
+          ) : null}
         </div>
 
         <div className="space-y-5">
