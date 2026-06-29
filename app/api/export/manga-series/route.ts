@@ -83,8 +83,9 @@ export async function GET(request: Request) {
 function collectColumns(rows: Record<string, unknown>[]): string[] {
   const columns = new Set([
     "id",
-    "title",
-    "normalized_title",
+    "madb_title",
+    "normalized_madb_title",
+    "display_title",
     "description",
     "created_at",
     "updated_at",

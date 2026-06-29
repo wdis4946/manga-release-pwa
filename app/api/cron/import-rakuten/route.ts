@@ -42,6 +42,8 @@ type PageSaveResult = {
   newIsbnCount: number;
 };
 
+type ImportMode = "auto" | "initial" | "daily";
+
 async function importRakutenManga(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
 
@@ -56,6 +58,9 @@ async function importRakutenManga(request: Request) {
 
   const startedAt = performance.now();
   const supabase = createSupabaseAdminClient();
+  const requestedMode = normalizeImportMode(
+    new URL(request.url).searchParams.get("mode"),
+  );
   const acquired = await acquireImportLock(supabase);
 
   if (!acquired) {
@@ -70,10 +75,21 @@ async function importRakutenManga(request: Request) {
     const initialGenre = await findInitialImportGenre(supabase);
 
     if (initialGenre) {
+      if (requestedMode === "daily") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Initial import has not completed.",
+          },
+          { status: 409 },
+        );
+      }
+
       const result = await importInitialGenre(supabase, initialGenre);
       return NextResponse.json({
         ok: true,
         mode: "initial",
+        initialCompleted: false,
         discoveredCount,
         ...result,
         durationMs: Math.round(performance.now() - startedAt),
@@ -81,9 +97,29 @@ async function importRakutenManga(request: Request) {
     }
 
     if (await hasPendingGenreDiscovery(supabase)) {
+      if (requestedMode === "daily") {
+        return NextResponse.json(
+          {
+            ok: false,
+            error: "Genre discovery has not completed.",
+          },
+          { status: 409 },
+        );
+      }
+
       return NextResponse.json({
         ok: true,
         mode: "genre-discovery",
+        discoveredCount,
+        durationMs: Math.round(performance.now() - startedAt),
+      });
+    }
+
+    if (requestedMode === "initial") {
+      return NextResponse.json({
+        ok: true,
+        mode: "initial",
+        initialCompleted: true,
         discoveredCount,
         durationMs: Math.round(performance.now() - startedAt),
       });
@@ -120,6 +156,14 @@ async function importRakutenManga(request: Request) {
   } finally {
     await releaseImportLock(supabase);
   }
+}
+
+function normalizeImportMode(value: string | null): ImportMode {
+  if (value === "initial" || value === "daily") {
+    return value;
+  }
+
+  return "auto";
 }
 
 async function findInitialImportGenre(

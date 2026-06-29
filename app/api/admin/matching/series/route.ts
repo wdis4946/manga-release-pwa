@@ -15,40 +15,55 @@ export async function GET(request: Request) {
   }
 
   const supabase = createSupabaseAdminClient();
-  const [titleResult, normalizedResult] = await Promise.all([
+  const [displayResult, madbResult, normalizedResult] = await Promise.all([
     supabase
       .from("manga_series")
-      .select("id, title, normalized_title, description")
-      .ilike("title", `%${queryText}%`)
-      .order("title")
+      .select(
+        "id, madb_title, normalized_madb_title, display_title, description",
+      )
+      .ilike("display_title", `%${queryText}%`)
+      .order("display_title")
       .limit(25),
     supabase
       .from("manga_series")
-      .select("id, title, normalized_title, description")
-      .ilike("normalized_title", `%${queryText}%`)
-      .order("title")
+      .select(
+        "id, madb_title, normalized_madb_title, display_title, description",
+      )
+      .ilike("madb_title", `%${queryText}%`)
+      .order("display_title")
+      .limit(25),
+    supabase
+      .from("manga_series")
+      .select(
+        "id, madb_title, normalized_madb_title, display_title, description",
+      )
+      .ilike("normalized_madb_title", `%${queryText}%`)
+      .order("display_title")
       .limit(25),
   ]);
 
-  if (titleResult.error || normalizedResult.error) {
+  if (displayResult.error || madbResult.error || normalizedResult.error) {
     console.error(
       "[Admin matching] Failed to search series.",
-      titleResult.error ?? normalizedResult.error,
+      displayResult.error ?? madbResult.error ?? normalizedResult.error,
     );
     return Response.json({ error: "Search failed." }, { status: 500 });
   }
 
   const uniqueSeries = new Map(
-    [...(titleResult.data ?? []), ...(normalizedResult.data ?? [])].map(
-      (series) => [series.id, series],
-    ),
+    [
+      ...(displayResult.data ?? []),
+      ...(madbResult.data ?? []),
+      ...(normalizedResult.data ?? []),
+    ].map((series) => [series.id, series]),
   );
 
   return Response.json({
     series: Array.from(uniqueSeries.values()).slice(0, 25).map((series) => ({
       id: series.id,
-      title: series.title,
-      normalizedTitle: series.normalized_title,
+      madbTitle: series.madb_title,
+      normalizedMadbTitle: series.normalized_madb_title,
+      displayTitle: series.display_title,
       description: series.description,
     })),
   });
@@ -62,22 +77,28 @@ export async function POST(request: Request) {
   }
 
   const body = (await request.json()) as {
-    title?: string;
+    displayTitle?: string;
     description?: string;
   };
-  const title = body.title?.trim();
+  const displayTitle = body.displayTitle?.trim();
 
-  if (!title) {
-    return Response.json({ error: "Title is required." }, { status: 400 });
+  if (!displayTitle) {
+    return Response.json(
+      { error: "Display title is required." },
+      { status: 400 },
+    );
   }
 
   const { data, error } = await createSupabaseAdminClient()
     .from("manga_series")
     .insert({
-      title,
+      madb_title: displayTitle,
+      display_title: displayTitle,
       description: body.description?.trim() || null,
     })
-    .select("id, title, normalized_title, description")
+    .select(
+      "id, madb_title, normalized_madb_title, display_title, description",
+    )
     .single();
 
   if (error) {
@@ -88,8 +109,9 @@ export async function POST(request: Request) {
   return Response.json({
     series: {
       id: data.id,
-      title: data.title,
-      normalizedTitle: data.normalized_title,
+      madbTitle: data.madb_title,
+      normalizedMadbTitle: data.normalized_madb_title,
+      displayTitle: data.display_title,
       description: data.description,
     },
   });

@@ -16,8 +16,9 @@ export type MatchingIssue = {
 
 export type MangaSeriesCandidate = {
   id: string;
-  title: string;
-  normalizedTitle: string;
+  madbTitle: string;
+  normalizedMadbTitle: string;
+  displayTitle: string;
   description: string | null;
 };
 

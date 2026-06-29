@@ -238,7 +238,7 @@ export function MangaMatchingConsole() {
       "/api/admin/matching/series",
       {
         method: "POST",
-        body: JSON.stringify({ title: newSeriesTitle }),
+        body: JSON.stringify({ displayTitle: newSeriesTitle }),
       },
     );
 
@@ -582,13 +582,18 @@ export function MangaMatchingConsole() {
                   className="rounded-md border border-stone-200 p-3"
                 >
                   <Link
-                    href={`/admin/series?q=${encodeURIComponent(candidate.title)}`}
+                    href={`/admin/series?q=${encodeURIComponent(candidate.displayTitle)}`}
                     className="block text-sm font-bold text-stone-900 hover:text-cyan-800 hover:underline"
                   >
-                    {candidate.title}
+                    {candidate.displayTitle}
                   </Link>
+                  {candidate.madbTitle !== candidate.displayTitle ? (
+                    <p className="mt-1 text-xs text-stone-500">
+                      MADB: {candidate.madbTitle}
+                    </p>
+                  ) : null}
                   <p className="mt-1 break-all font-mono text-[11px] text-stone-500">
-                    {candidate.normalizedTitle}
+                    {candidate.normalizedMadbTitle}
                   </p>
                   <button
                     type="button"

@@ -159,7 +159,7 @@ export function SeriesManagementConsole({
 
       const data = (await response.json()) as SeriesDetailResponse;
       setSelectedSeries(data.series);
-      setEditedTitle(data.series.title);
+      setEditedTitle(data.series.displayTitle);
       setIsEditingTitle(false);
       setItems(data.items);
       setIsDetailLoading(false);
@@ -254,7 +254,7 @@ export function SeriesManagementConsole({
       `/api/admin/series/${selectedSeriesId}`,
       {
         method: "PATCH",
-        body: JSON.stringify({ title: editedTitle.trim() }),
+        body: JSON.stringify({ displayTitle: editedTitle.trim() }),
       },
     );
 
@@ -289,7 +289,7 @@ export function SeriesManagementConsole({
           : entry,
       ),
     );
-    setEditedTitle(updatedSeries.title);
+    setEditedTitle(updatedSeries.displayTitle);
     setIsEditingTitle(false);
     setIsUpdatingTitle(false);
   }
@@ -383,11 +383,16 @@ export function SeriesManagementConsole({
                   }`}
                 >
                   <p className="text-sm font-semibold text-stone-900">
-                    {entry.title}
+                    {entry.displayTitle}
                   </p>
+                  {entry.madbTitle !== entry.displayTitle ? (
+                    <p className="mt-1 truncate text-xs text-stone-500">
+                      MADB: {entry.madbTitle}
+                    </p>
+                  ) : null}
                   <div className="mt-1 flex items-center justify-between gap-3">
                     <p className="truncate font-mono text-[11px] text-stone-400">
-                      {entry.normalizedTitle}
+                      {entry.normalizedMadbTitle}
                     </p>
                     <span className="shrink-0 text-xs font-semibold text-cyan-800">
                       {entry.itemCount}冊
@@ -450,7 +455,7 @@ export function SeriesManagementConsole({
                           disabled={
                             isUpdatingTitle ||
                             !editedTitle.trim() ||
-                            editedTitle.trim() === currentSeries.title
+                            editedTitle.trim() === currentSeries.displayTitle
                           }
                           className="flex size-10 items-center justify-center rounded-md bg-cyan-700 text-white hover:bg-cyan-800 disabled:opacity-40"
                         >
@@ -465,7 +470,7 @@ export function SeriesManagementConsole({
                           title="キャンセル"
                           disabled={isUpdatingTitle}
                           onClick={() => {
-                            setEditedTitle(currentSeries.title);
+                            setEditedTitle(currentSeries.displayTitle);
                             setIsEditingTitle(false);
                           }}
                           className="flex size-10 items-center justify-center rounded-md border border-stone-300 bg-white text-stone-600 hover:bg-stone-50 disabled:opacity-40"
@@ -476,13 +481,13 @@ export function SeriesManagementConsole({
                     ) : (
                       <div className="flex items-center gap-2">
                         <h2 className="text-xl font-bold text-stone-950">
-                          {currentSeries.title}
+                          {currentSeries.displayTitle}
                         </h2>
                         <button
                           type="button"
                           title="タイトルを編集"
                           onClick={() => {
-                            setEditedTitle(currentSeries.title);
+                            setEditedTitle(currentSeries.displayTitle);
                             setIsEditingTitle(true);
                           }}
                           className="flex size-8 shrink-0 items-center justify-center rounded-md border border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
@@ -492,7 +497,10 @@ export function SeriesManagementConsole({
                       </div>
                     )}
                     <p className="mt-1 break-all font-mono text-xs text-stone-500">
-                      {currentSeries.normalizedTitle}
+                      {currentSeries.normalizedMadbTitle}
+                    </p>
+                    <p className="mt-1 text-xs text-stone-500">
+                      MADBタイトル: {currentSeries.madbTitle}
                     </p>
                   </div>
                   <span className="text-sm font-bold text-cyan-800">

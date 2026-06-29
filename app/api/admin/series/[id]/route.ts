@@ -16,7 +16,9 @@ export async function GET(request: Request, context: RouteContext) {
   const supabase = createSupabaseAdminClient();
   const { data: series, error: seriesError } = await supabase
     .from("manga_series")
-    .select("id, title, normalized_title, description")
+    .select(
+      "id, madb_title, normalized_madb_title, display_title, description",
+    )
     .eq("id", id)
     .maybeSingle();
 
@@ -94,8 +96,9 @@ export async function GET(request: Request, context: RouteContext) {
   return Response.json({
     series: {
       id: series.id,
-      title: series.title,
-      normalizedTitle: series.normalized_title,
+      madbTitle: series.madb_title,
+      normalizedMadbTitle: series.normalized_madb_title,
+      displayTitle: series.display_title,
       description: series.description,
       itemCount: linkedItems.length,
     },
@@ -111,22 +114,27 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const body = (await request.json()) as { title?: string };
-  const title = body.title?.trim();
+  const body = (await request.json()) as { displayTitle?: string };
+  const displayTitle = body.displayTitle?.trim();
 
-  if (!title) {
-    return Response.json({ error: "Title is required." }, { status: 400 });
+  if (!displayTitle) {
+    return Response.json(
+      { error: "Display title is required." },
+      { status: 400 },
+    );
   }
 
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("manga_series")
     .update({
-      title,
+      display_title: displayTitle,
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .select("id, title, normalized_title, description")
+    .select(
+      "id, madb_title, normalized_madb_title, display_title, description",
+    )
     .single();
 
   if (error) {
@@ -137,8 +145,9 @@ export async function PATCH(request: Request, context: RouteContext) {
   return Response.json({
     series: {
       id: data.id,
-      title: data.title,
-      normalizedTitle: data.normalized_title,
+      madbTitle: data.madb_title,
+      normalizedMadbTitle: data.normalized_madb_title,
+      displayTitle: data.display_title,
       description: data.description,
     },
   });

@@ -23,7 +23,7 @@
 # misc
 .DS_Store
 *.pem
-/manga-series.csv
+/manga-series*.csv
 
 # debug
 npm-debug.log*

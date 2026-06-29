@@ -18,12 +18,15 @@ export async function GET(request: Request) {
 
   let query = supabase
     .from("manga_series")
-    .select("id, title, normalized_title, description", { count: "exact" })
-    .order("title", { ascending: true })
+    .select(
+      "id, madb_title, normalized_madb_title, display_title, description",
+      { count: "exact" },
+    )
+    .order("display_title", { ascending: true })
     .range(from, from + PAGE_SIZE - 1);
 
   if (queryText) {
-    query = query.ilike("title", `%${queryText}%`);
+    query = query.ilike("display_title", `%${queryText}%`);
   }
 
   const { data: seriesRows, count, error } = await query;
@@ -58,8 +61,9 @@ export async function GET(request: Request) {
   return Response.json({
     series: (seriesRows ?? []).map((row) => ({
       id: row.id,
-      title: row.title,
-      normalizedTitle: row.normalized_title,
+      madbTitle: row.madb_title,
+      normalizedMadbTitle: row.normalized_madb_title,
+      displayTitle: row.display_title,
       description: row.description,
       itemCount: itemCounts.get(row.id) ?? 0,
     })),

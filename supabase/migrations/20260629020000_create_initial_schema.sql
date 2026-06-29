@@ -62,9 +62,12 @@ $$;
 
 create table public.manga_series (
   id uuid primary key default gen_random_uuid(),
-  title text not null unique,
-  normalized_title text
-    generated always as (public.normalize_manga_title(title, false)) stored,
+  madb_title text not null unique,
+  normalized_madb_title text
+    generated always as (
+      public.normalize_manga_title(madb_title, false)
+    ) stored,
+  display_title text not null,
   description text,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
@@ -177,8 +180,10 @@ create table public.manga_series_item_unlink_logs (
   unlinked_at timestamptz not null default now()
 );
 
-create index manga_series_normalized_title_idx
-  on public.manga_series(normalized_title);
+create index manga_series_normalized_madb_title_idx
+  on public.manga_series(normalized_madb_title);
+create index manga_series_display_title_idx
+  on public.manga_series(display_title);
 create index rakuten_manga_items_title_idx
   on public.rakuten_manga_items(title);
 create index rakuten_manga_items_normalized_title_idx
@@ -350,7 +355,7 @@ begin
     ) as candidate_series_ids
   from manga_link_batch as batch
   left join public.manga_series as series
-    on series.normalized_title = batch.normalized_title
+    on series.normalized_madb_title = batch.normalized_title
   group by batch.isbn, batch.normalized_title;
 
   insert into public.manga_series_items (
@@ -527,7 +532,7 @@ begin
     )
   into v_candidate_count, v_candidate_series_ids
   from public.manga_series as series
-  where series.normalized_title = v_normalized_title;
+  where series.normalized_madb_title = v_normalized_title;
 
   insert into public.manga_series_item_unlink_logs (
     isbn,
