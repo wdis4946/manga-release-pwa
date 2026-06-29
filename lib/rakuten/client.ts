@@ -149,6 +149,7 @@ type BuildSearchUrlOptions = {
   page: number;
   hits: number;
   booksGenreId?: string;
+  includeSize?: boolean;
 };
 
 function buildRakutenSearchUrl({
@@ -159,12 +160,15 @@ function buildRakutenSearchUrl({
   page,
   hits,
   booksGenreId,
+  includeSize = true,
 }: BuildSearchUrlOptions): string {
   const params = createBaseParams({ applicationId, accessKey, affiliateId });
 
-  // size=9 narrows Rakuten Books results to comics. App sort names are mapped
-  // here so UI wording can stay independent from Rakuten's API vocabulary.
-  params.set("size", "9");
+  if (includeSize) {
+    // size=9 narrows Rakuten Books results to comics. App sort names are mapped
+    // here so UI wording can stay independent from Rakuten's API vocabulary.
+    params.set("size", "9");
+  }
   params.set("sort", sort === "popular" ? "sales" : "-releaseDate");
   params.set("hits", String(hits));
   params.set("page", String(page));
