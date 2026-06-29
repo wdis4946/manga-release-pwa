@@ -68,6 +68,7 @@ async function importRakutenManga(request: Request) {
         page: nextPage,
         hits: 30,
         booksGenreId: genre.genre_id,
+        includeSize: false,
       });
       const fetchedAt = new Date().toISOString();
       const rowsByIsbn = new Map(
