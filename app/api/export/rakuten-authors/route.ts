@@ -25,7 +25,7 @@ export async function GET(request: Request) {
 
     while (true) {
       let query = supabase
-        .from("rakuten_manga_items")
+        .from("rakuten_manga_item_details")
         .select("isbn, author, author_kana")
         .order("isbn")
         .limit(PAGE_SIZE);

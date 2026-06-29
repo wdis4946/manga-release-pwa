@@ -30,6 +30,7 @@ export async function fetchRakutenBookPage({
   page = 1,
   hits = 30,
   booksGenreId,
+  includeSize = true,
 }: FetchRakutenMangaOptions): Promise<RakutenBookPage> {
   const credentials = getRakutenCredentials();
   const url = new URL(
@@ -39,6 +40,7 @@ export async function fetchRakutenBookPage({
       page,
       hits,
       booksGenreId,
+      includeSize,
     }),
   );
 

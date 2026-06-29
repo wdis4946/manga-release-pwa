@@ -52,9 +52,7 @@ export async function GET(request: Request) {
       ? { data: [], error: null }
       : await supabase
           .from("rakuten_manga_items")
-          .select(
-            "isbn, title, author, publisher_name, sales_date, large_image_url, medium_image_url, item_url",
-          )
+          .select("isbn, title")
           .in("isbn", isbns);
 
   if (itemError) {
@@ -65,11 +63,33 @@ export async function GET(request: Request) {
     );
   }
 
+  const { data: detailRows, error: detailError } =
+    isbns.length === 0
+      ? { data: [], error: null }
+      : await supabase
+          .from("rakuten_manga_item_details")
+          .select(
+            "isbn, author, publisher_name, sales_date, large_image_url, medium_image_url, item_url",
+          )
+          .in("isbn", isbns);
+
+  if (detailError) {
+    console.error("[Admin matching] Failed to load item details.", detailError);
+    return Response.json(
+      { error: "Failed to load item details." },
+      { status: 500 },
+    );
+  }
+
   const itemsByIsbn = new Map(
     (itemRows ?? []).map((item) => [item.isbn, item]),
   );
+  const detailsByIsbn = new Map(
+    (detailRows ?? []).map((detail) => [detail.isbn, detail]),
+  );
   const issues = (issueRows ?? []).map((issue) => {
     const item = itemsByIsbn.get(issue.isbn);
+    const detail = detailsByIsbn.get(issue.isbn);
 
     return {
       isbn: issue.isbn,
@@ -81,12 +101,12 @@ export async function GET(request: Request) {
       detectedAt: issue.detected_at,
       // Keep the original Rakuten title separate from the normalized matching key.
       title: item?.title ?? "タイトル不明",
-      author: item?.author ?? null,
-      publisherName: item?.publisher_name ?? null,
-      salesDate: item?.sales_date ?? null,
+      author: detail?.author ?? null,
+      publisherName: detail?.publisher_name ?? null,
+      salesDate: detail?.sales_date ?? null,
       coverImageUrl:
-        item?.large_image_url ?? item?.medium_image_url ?? null,
-      itemUrl: item?.item_url ?? null,
+        detail?.large_image_url ?? detail?.medium_image_url ?? null,
+      itemUrl: detail?.item_url ?? null,
     };
   });
 

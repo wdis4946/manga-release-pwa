@@ -3,6 +3,11 @@ import type { RakutenBook } from "./types";
 export type RakutenMangaItemRow = {
   isbn: string;
   title: string;
+  last_fetched_at: string;
+};
+
+export type RakutenMangaItemDetailRow = {
+  isbn: string;
   title_kana: string | null;
   sub_title: string | null;
   sub_title_kana: string | null;
@@ -44,6 +49,20 @@ export function toRakutenMangaItemRow(
   return {
     isbn: item.isbn,
     title: item.title,
+    last_fetched_at: fetchedAt,
+  };
+}
+
+export function toRakutenMangaItemDetailRow(
+  item: RakutenBook,
+  fetchedAt: string,
+): RakutenMangaItemDetailRow | null {
+  if (!item.isbn || !item.title) {
+    return null;
+  }
+
+  return {
+    isbn: item.isbn,
     title_kana: item.titleKana ?? null,
     sub_title: item.subTitle ?? null,
     sub_title_kana: item.subTitleKana ?? null,
