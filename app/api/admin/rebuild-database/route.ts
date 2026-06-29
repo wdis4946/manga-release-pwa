@@ -58,17 +58,21 @@ export async function POST(request: Request) {
     );
   }
 
-  const migrationSql = await readFile(
-    path.join(process.cwd(), MIGRATION_FILE),
-    "utf8",
-  );
   const client = new Client({
     connectionString,
     ssl: { rejectUnauthorized: false },
   });
+  let stage = "read-migration";
 
   try {
+    const migrationSql = await readFile(
+      path.join(process.cwd(), MIGRATION_FILE),
+      "utf8",
+    );
+
+    stage = "connect";
     await client.connect();
+    stage = "verify-backup-count";
     const countResult = await client.query<{ count: string }>(
       "select count(*)::text as count from public.manga_series",
     );
@@ -86,9 +90,12 @@ export async function POST(request: Request) {
       );
     }
 
+    stage = "begin-transaction";
     await client.query("begin");
+    stage = "apply-schema";
     await client.query(migrationSql);
 
+    stage = "verify-rebuilt-schema";
     const verification = await client.query<{
       series_count: string;
       genre_count: string;
@@ -110,6 +117,7 @@ export async function POST(request: Request) {
       throw new Error("Rebuilt schema verification failed.");
     }
 
+    stage = "commit";
     await client.query("commit");
 
     return Response.json({
@@ -126,11 +134,36 @@ export async function POST(request: Request) {
     }
 
     console.error("[Database rebuild] Failed.", error);
+    const details = getErrorDetails(error);
     return Response.json(
-      { ok: false, error: "Database rebuild failed." },
+      {
+        ok: false,
+        error: "Database rebuild failed.",
+        stage,
+        ...details,
+      },
       { status: 500 },
     );
   } finally {
     await client.end().catch(() => undefined);
   }
+}
+
+function getErrorDetails(error: unknown): {
+  code?: string;
+  message: string;
+} {
+  if (!(error instanceof Error)) {
+    return { message: "Unknown error." };
+  }
+
+  const code =
+    "code" in error && typeof error.code === "string"
+      ? error.code
+      : undefined;
+
+  return {
+    code,
+    message: error.message,
+  };
 }
