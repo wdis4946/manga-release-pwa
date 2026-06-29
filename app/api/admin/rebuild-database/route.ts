@@ -1,0 +1,136 @@
+import { readFile } from "node:fs/promises";
+import path from "node:path";
+import { Client } from "pg";
+
+export const dynamic = "force-dynamic";
+export const maxDuration = 180;
+export const runtime = "nodejs";
+
+const CONFIRMATION = "REBUILD_PUBLIC_SCHEMA";
+const MIGRATION_FILE =
+  "supabase/migrations/20260629020000_create_initial_schema.sql";
+
+export async function POST(request: Request) {
+  const cronSecret = process.env.CRON_SECRET;
+
+  if (!cronSecret) {
+    return Response.json(
+      { ok: false, error: "CRON_SECRET is not configured." },
+      { status: 500 },
+    );
+  }
+
+  if (request.headers.get("authorization") !== `Bearer ${cronSecret}`) {
+    return Response.json({ ok: false, error: "Unauthorized." }, { status: 401 });
+  }
+
+  if (process.env.ALLOW_DATABASE_REBUILD !== "true") {
+    return Response.json(
+      { ok: false, error: "Database rebuild is disabled." },
+      { status: 403 },
+    );
+  }
+
+  if (request.headers.get("x-confirm-rebuild") !== CONFIRMATION) {
+    return Response.json(
+      { ok: false, error: "Rebuild confirmation is missing." },
+      { status: 400 },
+    );
+  }
+
+  const expectedSeriesCount = Number(
+    request.headers.get("x-expected-series-count"),
+  );
+
+  if (!Number.isSafeInteger(expectedSeriesCount) || expectedSeriesCount <= 0) {
+    return Response.json(
+      { ok: false, error: "A positive expected series count is required." },
+      { status: 400 },
+    );
+  }
+
+  const connectionString = process.env.SUPABASE_DB_URL;
+
+  if (!connectionString) {
+    return Response.json(
+      { ok: false, error: "SUPABASE_DB_URL is not configured." },
+      { status: 500 },
+    );
+  }
+
+  const migrationSql = await readFile(
+    path.join(process.cwd(), MIGRATION_FILE),
+    "utf8",
+  );
+  const client = new Client({
+    connectionString,
+    ssl: { rejectUnauthorized: false },
+  });
+
+  try {
+    await client.connect();
+    const countResult = await client.query<{ count: string }>(
+      "select count(*)::text as count from public.manga_series",
+    );
+    const actualSeriesCount = Number(countResult.rows[0]?.count);
+
+    if (actualSeriesCount !== expectedSeriesCount) {
+      return Response.json(
+        {
+          ok: false,
+          error: "The current series count does not match the CSV backup.",
+          expectedSeriesCount,
+          actualSeriesCount,
+        },
+        { status: 409 },
+      );
+    }
+
+    await client.query("begin");
+    await client.query(migrationSql);
+
+    const verification = await client.query<{
+      series_count: string;
+      genre_count: string;
+    }>(`
+      select
+        (select count(*)::text from public.manga_series) as series_count,
+        (
+          select count(*)::text
+          from public.rakuten_import_genres
+          where genre_id = '001001'
+        ) as genre_count
+    `);
+    const rebuiltState = verification.rows[0];
+
+    if (
+      rebuiltState?.series_count !== "0" ||
+      rebuiltState?.genre_count !== "1"
+    ) {
+      throw new Error("Rebuilt schema verification failed.");
+    }
+
+    await client.query("commit");
+
+    return Response.json({
+      ok: true,
+      previousSeriesCount: actualSeriesCount,
+      currentSeriesCount: 0,
+      comicRootGenreCreated: true,
+    });
+  } catch (error) {
+    try {
+      await client.query("rollback");
+    } catch {
+      // The connection may have failed before a transaction was opened.
+    }
+
+    console.error("[Database rebuild] Failed.", error);
+    return Response.json(
+      { ok: false, error: "Database rebuild failed." },
+      { status: 500 },
+    );
+  } finally {
+    await client.end().catch(() => undefined);
+  }
+}

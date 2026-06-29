@@ -1,6 +1,11 @@
 ﻿import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  outputFileTracingIncludes: {
+    "/api/admin/rebuild-database": [
+      "./supabase/migrations/20260629020000_create_initial_schema.sql",
+    ],
+  },
   images: {
     remotePatterns: [
       {
