@@ -523,11 +523,6 @@ export function SeriesManagementConsole({
                       key={item.isbn}
                       className="grid min-w-0 grid-cols-[76px_minmax(0,1fr)] gap-3 rounded-md border border-stone-200 bg-white p-3"
                     >
-                      {item.rawResponse ? (
-                        <pre hidden data-rakuten-api-data>
-                          {JSON.stringify(item.rawResponse, null, 2)}
-                        </pre>
-                      ) : null}
                       <div className="relative aspect-[2/3] overflow-hidden rounded bg-stone-200">
                         {item.coverImageUrl ? (
                           <Image

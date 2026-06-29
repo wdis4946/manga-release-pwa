@@ -45,7 +45,7 @@ export async function GET(request: Request, context: RouteContext) {
       : await supabase
           .from("rakuten_manga_items")
           .select(
-            "isbn, title, author, publisher_name, sales_date, large_image_url, medium_image_url, item_url, raw_response",
+            "isbn, title, author, publisher_name, sales_date, large_image_url, medium_image_url, item_url",
           )
           .in("isbn", isbns);
 
@@ -69,7 +69,6 @@ export async function GET(request: Request, context: RouteContext) {
         itemUrl: item?.item_url ?? null,
         matchMethod: link.match_method,
         matchedAt: link.matched_at,
-        rawResponse: item?.raw_response ?? null,
       };
     })
     .sort((left, right) =>
