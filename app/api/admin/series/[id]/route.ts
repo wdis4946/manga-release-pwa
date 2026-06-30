@@ -46,45 +46,29 @@ export async function GET(request: Request, context: RouteContext) {
       ? { data: [], error: null }
       : await supabase
           .from("rakuten_manga_items")
-          .select("isbn, title")
+          .select(
+            "isbn, title, author, publisher_name, sales_date, large_image_url, medium_image_url, item_url",
+          )
           .in("isbn", isbns);
 
   if (itemsError) {
     return Response.json({ error: itemsError.message }, { status: 500 });
   }
 
-  const { data: details, error: detailsError } =
-    isbns.length === 0
-      ? { data: [], error: null }
-      : await supabase
-          .from("rakuten_manga_item_details")
-          .select(
-            "isbn, author, publisher_name, sales_date, large_image_url, medium_image_url, item_url",
-          )
-          .in("isbn", isbns);
-
-  if (detailsError) {
-    return Response.json({ error: detailsError.message }, { status: 500 });
-  }
-
   const itemsByIsbn = new Map((items ?? []).map((item) => [item.isbn, item]));
-  const detailsByIsbn = new Map(
-    (details ?? []).map((detail) => [detail.isbn, detail]),
-  );
   const linkedItems = (links ?? [])
     .map((link) => {
       const item = itemsByIsbn.get(link.isbn);
-      const detail = detailsByIsbn.get(link.isbn);
 
       return {
         isbn: link.isbn,
         title: item?.title ?? "タイトル不明",
-        author: detail?.author ?? null,
-        publisherName: detail?.publisher_name ?? null,
-        salesDate: detail?.sales_date ?? null,
+        author: item?.author ?? null,
+        publisherName: item?.publisher_name ?? null,
+        salesDate: item?.sales_date ?? null,
         coverImageUrl:
-          detail?.large_image_url ?? detail?.medium_image_url ?? null,
-        itemUrl: detail?.item_url ?? null,
+          item?.large_image_url ?? item?.medium_image_url ?? null,
+        itemUrl: item?.item_url ?? null,
         matchMethod: link.match_method,
         matchedAt: link.matched_at,
       };

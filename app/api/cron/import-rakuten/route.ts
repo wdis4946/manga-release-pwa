@@ -3,10 +3,7 @@ import {
   fetchRakutenBookPage,
   fetchRakutenBooksGenre,
 } from "@/lib/rakuten/client";
-import {
-  toRakutenMangaItemDetailRow,
-  toRakutenMangaItemRow,
-} from "@/lib/rakuten/import";
+import { toRakutenMangaItemRow } from "@/lib/rakuten/import";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 export const dynamic = "force-dynamic";
@@ -395,15 +392,6 @@ async function savePage(
         .map((row) => [row.isbn, row]),
     ).values(),
   );
-  const detailRows = Array.from(
-    new Map(
-      items
-        .map((item) => toRakutenMangaItemDetailRow(item, fetchedAt))
-        .filter((row) => row !== null)
-        .map((row) => [row.isbn, row]),
-    ).values(),
-  );
-
   let newIsbnCount = 0;
 
   if (detectNewIsbns && itemRows.length > 0) {
@@ -426,16 +414,6 @@ async function savePage(
     const { error } = await supabase
       .from("rakuten_manga_items")
       .upsert(itemRows, { onConflict: "isbn" });
-
-    if (error) {
-      throw error;
-    }
-  }
-
-  if (detailRows.length > 0) {
-    const { error } = await supabase
-      .from("rakuten_manga_item_details")
-      .upsert(detailRows, { onConflict: "isbn" });
 
     if (error) {
       throw error;

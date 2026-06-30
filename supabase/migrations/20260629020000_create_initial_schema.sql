@@ -78,13 +78,6 @@ create table public.rakuten_manga_items (
   title text not null,
   normalized_title text
     generated always as (public.normalize_manga_title(title, true)) stored,
-  first_fetched_at timestamptz not null default now(),
-  last_fetched_at timestamptz not null default now()
-);
-
-create table public.rakuten_manga_item_details (
-  isbn text primary key
-    references public.rakuten_manga_items(isbn) on delete cascade,
   title_kana text,
   sub_title text,
   sub_title_kana text,
@@ -112,6 +105,7 @@ create table public.rakuten_manga_item_details (
   review_average numeric,
   books_genre_id text,
   raw_response jsonb,
+  first_fetched_at timestamptz not null default now(),
   last_fetched_at timestamptz not null default now()
 );
 
@@ -188,8 +182,8 @@ create index rakuten_manga_items_title_idx
   on public.rakuten_manga_items(title);
 create index rakuten_manga_items_normalized_title_idx
   on public.rakuten_manga_items(normalized_title);
-create index rakuten_manga_item_details_author_idx
-  on public.rakuten_manga_item_details(author);
+create index rakuten_manga_items_author_idx
+  on public.rakuten_manga_items(author);
 create index rakuten_import_genres_pending_discovery_idx
   on public.rakuten_import_genres(children_discovered_at, genre_id);
 create index rakuten_import_genres_pending_import_idx
@@ -219,7 +213,6 @@ values ('001001', '漫画（コミック）', 2);
 
 alter table public.manga_series enable row level security;
 alter table public.rakuten_manga_items enable row level security;
-alter table public.rakuten_manga_item_details enable row level security;
 alter table public.rakuten_import_genres enable row level security;
 alter table public.rakuten_import_locks enable row level security;
 alter table public.manga_series_items enable row level security;
@@ -228,7 +221,6 @@ alter table public.manga_series_item_unlink_logs enable row level security;
 
 revoke all on table public.manga_series from anon, authenticated;
 revoke all on table public.rakuten_manga_items from anon, authenticated;
-revoke all on table public.rakuten_manga_item_details from anon, authenticated;
 revoke all on table public.rakuten_import_genres from anon, authenticated;
 revoke all on table public.rakuten_import_locks from anon, authenticated;
 revoke all on table public.manga_series_items from anon, authenticated;
@@ -239,7 +231,6 @@ revoke all on table public.manga_series_item_unlink_logs
 
 grant all on table public.manga_series to service_role;
 grant all on table public.rakuten_manga_items to service_role;
-grant all on table public.rakuten_manga_item_details to service_role;
 grant all on table public.rakuten_import_genres to service_role;
 grant all on table public.rakuten_import_locks to service_role;
 grant all on table public.manga_series_items to service_role;

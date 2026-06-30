@@ -95,6 +95,7 @@ export async function fetchRakutenMangaByIsbn(
   const params = createBaseParams(credentials);
   params.set("isbn", isbn);
   params.set("hits", "1");
+  params.set("outOfStockFlag", "1");
 
   const response = await fetchRakutenWithRetry(
     `${RAKUTEN_BOOKS_ENDPOINT}?${params}`,
