@@ -15,6 +15,23 @@ type SourceBook = {
   normalizedTitle: string;
 };
 
+type EnrichmentDetail = {
+  isbn: string;
+  status: "linked" | "found_unmatched" | "not_found" | "error";
+  source?: SourceBook["source"];
+  title?: string;
+  normalizedTitle?: string;
+  candidateCount?: number;
+  linkedSeriesId?: string;
+  error?: string;
+};
+
+type LinkResult = {
+  linked: boolean;
+  candidateCount: number;
+  seriesId?: string;
+};
+
 export async function enrichUnmatchedTitles(request: Request) {
   const limitParameter = new URL(request.url).searchParams.get("limit");
   const requestedSize = limitParameter === null ? NaN : Number(limitParameter);
@@ -42,8 +59,17 @@ export async function enrichUnmatchedTitles(request: Request) {
     notFoundCount: 0,
     errorCount: 0,
   };
+  const details: EnrichmentDetail[] = [];
+
+  console.info("[Title enrichment] Batch started.", {
+    batchSize,
+    targetCount: data?.length ?? 0,
+    isbns: (data ?? []).map((issue) => issue.isbn),
+  });
 
   for (const issue of data ?? []) {
+    let detail: EnrichmentDetail;
+
     try {
       const sourceBook = await fetchAndSaveBook(supabase, issue.isbn);
 
@@ -55,38 +81,64 @@ export async function enrichUnmatchedTitles(request: Request) {
             "ISBN was not found in Rakuten Books or openBD.",
         });
         totals.notFoundCount += 1;
+        detail = {
+          isbn: issue.isbn,
+          status: "not_found",
+        };
       } else {
-        const linked = await linkExactSeries(
+        const linkResult = await linkExactSeries(
           supabase,
           issue.isbn,
           sourceBook,
         );
         totals.foundCount += 1;
-        totals.linkedCount += linked ? 1 : 0;
+        totals.linkedCount += linkResult.linked ? 1 : 0;
+        detail = {
+          isbn: issue.isbn,
+          status: linkResult.linked ? "linked" : "found_unmatched",
+          source: sourceBook.source,
+          title: sourceBook.title,
+          normalizedTitle: sourceBook.normalizedTitle,
+          candidateCount: linkResult.candidateCount,
+          linkedSeriesId: linkResult.seriesId,
+        };
       }
     } catch (lookupError) {
+      const errorMessage = getErrorMessage(lookupError);
       console.error("[Title enrichment] ISBN lookup failed.", {
         isbn: issue.isbn,
-        error: lookupError,
+        error: errorMessage,
       });
       await updateIssue(supabase, issue.isbn, {
         title_lookup_status: "error",
         title_lookup_at: new Date().toISOString(),
-        resolution_note: "External title lookup failed; retry is allowed.",
+        resolution_note: `External title lookup failed; retry is allowed. ${errorMessage}`,
       });
       totals.errorCount += 1;
+      detail = {
+        isbn: issue.isbn,
+        status: "error",
+        error: errorMessage,
+      };
     }
 
+    details.push(detail);
     totals.processedCount += 1;
+    console.info("[Title enrichment] ISBN processed.", detail);
+
     if (totals.processedCount < data.length) {
       await delay(REQUEST_INTERVAL_MS);
     }
   }
 
-  console.info("[Title enrichment] Batch completed.", totals);
+  console.info("[Title enrichment] Batch completed.", {
+    ...totals,
+    details,
+  });
   return {
     ...totals,
     completed: data.length < batchSize,
+    details,
   };
 }
 
@@ -162,7 +214,7 @@ async function linkExactSeries(
   supabase: SupabaseAdminClient,
   isbn: string,
   book: SourceBook,
-): Promise<boolean> {
+): Promise<LinkResult> {
   const { data: candidates, error } = await supabase
     .from("manga_series")
     .select("id")
@@ -203,7 +255,11 @@ async function linkExactSeries(
       throw deleteError;
     }
 
-    return true;
+    return {
+      linked: true,
+      candidateCount: 1,
+      seriesId: candidates[0].id,
+    };
   }
 
   await updateIssue(supabase, isbn, {
@@ -219,7 +275,10 @@ async function linkExactSeries(
         ? "A title was found, but no series matched it exactly."
         : "A title was found, but multiple series matched it exactly.",
   });
-  return false;
+  return {
+    linked: false,
+    candidateCount: candidates?.length ?? 0,
+  };
 }
 
 async function updateIssue(
@@ -239,4 +298,8 @@ async function updateIssue(
 
 function delay(milliseconds: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
+
+function getErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
 }
