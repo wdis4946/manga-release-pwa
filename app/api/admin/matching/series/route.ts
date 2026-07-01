@@ -1,11 +1,11 @@
 import { getAdminUser } from "@/lib/admin/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
-type NearestSeriesRow = {
+type SimilarSeriesRow = {
   id: string;
   search_title: string;
   display_title: string;
-  levenshtein_distance: number;
+  similarity_score: number;
 };
 
 export async function GET(request: Request) {
@@ -22,7 +22,7 @@ export async function GET(request: Request) {
   }
 
   const supabase = createSupabaseAdminClient();
-  const [displayResult, searchResult, nearestResult] = await Promise.all([
+  const [displayResult, searchResult, similarResult] = await Promise.all([
     supabase
       .from("manga_series")
       .select("id, search_title, display_title")
@@ -35,30 +35,30 @@ export async function GET(request: Request) {
       .ilike("search_title", `%${queryText}%`)
       .order("display_title")
       .limit(25),
-    supabase.rpc("find_nearest_manga_series", {
+    supabase.rpc("find_similar_manga_series", {
       p_normalized_title: queryText,
       p_limit: 3,
     }),
   ]);
 
-  if (displayResult.error || searchResult.error || nearestResult.error) {
+  if (displayResult.error || searchResult.error || similarResult.error) {
     console.error(
       "[Admin matching] Failed to search series.",
-      displayResult.error ?? searchResult.error ?? nearestResult.error,
+      displayResult.error ?? searchResult.error ?? similarResult.error,
     );
     return Response.json({ error: "Search failed." }, { status: 500 });
   }
 
-  const nearestRows = (nearestResult.data ?? []) as NearestSeriesRow[];
-  const distances = new Map(
-    nearestRows.map((series) => [
+  const similarRows = (similarResult.data ?? []) as SimilarSeriesRow[];
+  const similarityScores = new Map(
+    similarRows.map((series) => [
       series.id,
-      series.levenshtein_distance,
+      series.similarity_score,
     ]),
   );
   const uniqueSeries = new Map(
     [
-      ...nearestRows,
+      ...similarRows,
       ...(displayResult.data ?? []),
       ...(searchResult.data ?? []),
     ].map((series) => [series.id, series]),
@@ -69,7 +69,7 @@ export async function GET(request: Request) {
       id: series.id,
       searchTitle: series.search_title,
       displayTitle: series.display_title,
-      levenshteinDistance: distances.get(series.id),
+      similarityScore: similarityScores.get(series.id),
     })),
   });
 }

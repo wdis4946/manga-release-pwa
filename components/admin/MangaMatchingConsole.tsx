@@ -592,9 +592,9 @@ export function MangaMatchingConsole() {
                       検索用: {candidate.searchTitle}
                     </p>
                   ) : null}
-                  {candidate.levenshteinDistance !== undefined ? (
+                  {candidate.similarityScore !== undefined ? (
                     <p className="mt-1 text-xs font-semibold text-cyan-800">
-                      Levenshtein距離: {candidate.levenshteinDistance}
+                      類似度: {candidate.similarityScore.toFixed(3)}
                     </p>
                   ) : null}
                   <button

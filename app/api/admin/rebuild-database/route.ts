@@ -127,6 +127,13 @@ export async function POST(request: Request) {
           ),
           "utf8",
         ),
+        readFile(
+          path.join(
+            process.cwd(),
+            "supabase/migrations/20260701050000_replace_levenshtein_with_trgm.sql",
+          ),
+          "utf8",
+        ),
       ])
     ).join("\n\n");
 
