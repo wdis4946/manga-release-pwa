@@ -18,10 +18,7 @@ export async function GET(request: Request) {
 
   let query = supabase
     .from("manga_series")
-    .select(
-      "id, madb_title, normalized_madb_title, display_title, description",
-      { count: "exact" },
-    )
+    .select("id, search_title, display_title", { count: "exact" })
     .order("display_title", { ascending: true })
     .range(from, from + PAGE_SIZE - 1);
 
@@ -61,10 +58,8 @@ export async function GET(request: Request) {
   return Response.json({
     series: (seriesRows ?? []).map((row) => ({
       id: row.id,
-      madbTitle: row.madb_title,
-      normalizedMadbTitle: row.normalized_madb_title,
+      searchTitle: row.search_title,
       displayTitle: row.display_title,
-      description: row.description,
       itemCount: itemCounts.get(row.id) ?? 0,
     })),
     page,

@@ -385,15 +385,12 @@ export function SeriesManagementConsole({
                   <p className="text-sm font-semibold text-stone-900">
                     {entry.displayTitle}
                   </p>
-                  {entry.madbTitle !== entry.displayTitle ? (
+                  {entry.searchTitle !== entry.displayTitle ? (
                     <p className="mt-1 truncate text-xs text-stone-500">
-                      MADB: {entry.madbTitle}
+                      検索用: {entry.searchTitle}
                     </p>
                   ) : null}
                   <div className="mt-1 flex items-center justify-between gap-3">
-                    <p className="truncate font-mono text-[11px] text-stone-400">
-                      {entry.normalizedMadbTitle}
-                    </p>
                     <span className="shrink-0 text-xs font-semibold text-cyan-800">
                       {entry.itemCount}冊
                     </span>
@@ -496,22 +493,14 @@ export function SeriesManagementConsole({
                         </button>
                       </div>
                     )}
-                    <p className="mt-1 break-all font-mono text-xs text-stone-500">
-                      {currentSeries.normalizedMadbTitle}
-                    </p>
                     <p className="mt-1 text-xs text-stone-500">
-                      MADBタイトル: {currentSeries.madbTitle}
+                      検索用タイトル: {currentSeries.searchTitle}
                     </p>
                   </div>
                   <span className="text-sm font-bold text-cyan-800">
                     {items.length}冊
                   </span>
                 </div>
-                {currentSeries.description ? (
-                  <p className="mt-3 text-sm leading-6 text-stone-600">
-                    {currentSeries.description}
-                  </p>
-                ) : null}
               </div>
 
               {error ? (

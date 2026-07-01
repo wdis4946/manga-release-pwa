@@ -587,14 +587,11 @@ export function MangaMatchingConsole() {
                   >
                     {candidate.displayTitle}
                   </Link>
-                  {candidate.madbTitle !== candidate.displayTitle ? (
+                  {candidate.searchTitle !== candidate.displayTitle ? (
                     <p className="mt-1 text-xs text-stone-500">
-                      MADB: {candidate.madbTitle}
+                      検索用: {candidate.searchTitle}
                     </p>
                   ) : null}
-                  <p className="mt-1 break-all font-mono text-[11px] text-stone-500">
-                    {candidate.normalizedMadbTitle}
-                  </p>
                   <button
                     type="button"
                     disabled={isMutating || selectedIssue?.isResolved}

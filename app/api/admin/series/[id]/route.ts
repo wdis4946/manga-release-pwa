@@ -16,9 +16,7 @@ export async function GET(request: Request, context: RouteContext) {
   const supabase = createSupabaseAdminClient();
   const { data: series, error: seriesError } = await supabase
     .from("manga_series")
-    .select(
-      "id, madb_title, normalized_madb_title, display_title, description",
-    )
+    .select("id, search_title, display_title")
     .eq("id", id)
     .maybeSingle();
 
@@ -55,16 +53,33 @@ export async function GET(request: Request, context: RouteContext) {
     return Response.json({ error: itemsError.message }, { status: 500 });
   }
 
+  const { data: madbItems, error: madbItemsError } =
+    isbns.length === 0
+      ? { data: [], error: null }
+      : await supabase
+          .from("madb_manga_items")
+          .select("isbn, title, authors, publisher")
+          .in("isbn", isbns);
+
+  if (madbItemsError) {
+    return Response.json({ error: madbItemsError.message }, { status: 500 });
+  }
+
   const itemsByIsbn = new Map((items ?? []).map((item) => [item.isbn, item]));
+  const madbItemsByIsbn = new Map(
+    (madbItems ?? []).map((item) => [item.isbn, item]),
+  );
   const linkedItems = (links ?? [])
     .map((link) => {
       const item = itemsByIsbn.get(link.isbn);
+      const madbItem = madbItemsByIsbn.get(link.isbn);
 
       return {
         isbn: link.isbn,
-        title: item?.title ?? "タイトル不明",
-        author: item?.author ?? null,
-        publisherName: item?.publisher_name ?? null,
+        title: item?.title ?? madbItem?.title ?? "タイトル不明",
+        author: item?.author ?? madbItem?.authors ?? null,
+        publisherName:
+          item?.publisher_name ?? madbItem?.publisher ?? null,
         salesDate: item?.sales_date ?? null,
         coverImageUrl:
           item?.large_image_url ?? item?.medium_image_url ?? null,
@@ -80,10 +95,8 @@ export async function GET(request: Request, context: RouteContext) {
   return Response.json({
     series: {
       id: series.id,
-      madbTitle: series.madb_title,
-      normalizedMadbTitle: series.normalized_madb_title,
+      searchTitle: series.search_title,
       displayTitle: series.display_title,
-      description: series.description,
       itemCount: linkedItems.length,
     },
     items: linkedItems,
@@ -116,9 +129,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       updated_at: new Date().toISOString(),
     })
     .eq("id", id)
-    .select(
-      "id, madb_title, normalized_madb_title, display_title, description",
-    )
+    .select("id, search_title, display_title")
     .single();
 
   if (error) {
@@ -129,10 +140,8 @@ export async function PATCH(request: Request, context: RouteContext) {
   return Response.json({
     series: {
       id: data.id,
-      madbTitle: data.madb_title,
-      normalizedMadbTitle: data.normalized_madb_title,
+      searchTitle: data.search_title,
       displayTitle: data.display_title,
-      description: data.description,
     },
   });
 }

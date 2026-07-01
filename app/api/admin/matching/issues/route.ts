@@ -65,11 +65,34 @@ export async function GET(request: Request) {
     );
   }
 
+  const { data: madbItemRows, error: madbItemError } =
+    isbns.length === 0
+      ? { data: [], error: null }
+      : await supabase
+          .from("madb_manga_items")
+          .select("isbn, title, authors, publisher")
+          .in("isbn", isbns);
+
+  if (madbItemError) {
+    console.error(
+      "[Admin matching] Failed to load MADB item details.",
+      madbItemError,
+    );
+    return Response.json(
+      { error: "Failed to load MADB item details." },
+      { status: 500 },
+    );
+  }
+
   const itemsByIsbn = new Map(
     (itemRows ?? []).map((item) => [item.isbn, item]),
   );
+  const madbItemsByIsbn = new Map(
+    (madbItemRows ?? []).map((item) => [item.isbn, item]),
+  );
   const issues = (issueRows ?? []).map((issue) => {
     const item = itemsByIsbn.get(issue.isbn);
+    const madbItem = madbItemsByIsbn.get(issue.isbn);
 
     return {
       isbn: issue.isbn,
@@ -80,9 +103,10 @@ export async function GET(request: Request) {
       isResolved: issue.is_resolved,
       detectedAt: issue.detected_at,
       // Keep the original Rakuten title separate from the normalized matching key.
-      title: item?.title ?? "タイトル不明",
-      author: item?.author ?? null,
-      publisherName: item?.publisher_name ?? null,
+      title: item?.title ?? madbItem?.title ?? "タイトル不明",
+      author: item?.author ?? madbItem?.authors ?? null,
+      publisherName:
+        item?.publisher_name ?? madbItem?.publisher ?? null,
       salesDate: item?.sales_date ?? null,
       coverImageUrl:
         item?.large_image_url ?? item?.medium_image_url ?? null,

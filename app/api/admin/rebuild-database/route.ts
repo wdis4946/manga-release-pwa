@@ -7,9 +7,6 @@ export const maxDuration = 180;
 export const runtime = "nodejs";
 
 const CONFIRMATION = "REBUILD_PUBLIC_SCHEMA";
-const MIGRATION_FILE =
-  "supabase/migrations/20260629020000_create_initial_schema.sql";
-
 export async function POST(request: Request) {
   const cronSecret = process.env.CRON_SECRET;
 
@@ -65,10 +62,66 @@ export async function POST(request: Request) {
   let stage = "read-migration";
 
   try {
-    const migrationSql = await readFile(
-      path.join(process.cwd(), MIGRATION_FILE),
-      "utf8",
-    );
+    const migrationSql = (
+      await Promise.all([
+        readFile(
+          path.join(
+            process.cwd(),
+            "supabase/migrations/20260629020000_create_initial_schema.sql",
+          ),
+          "utf8",
+        ),
+        readFile(
+          path.join(
+            process.cwd(),
+            "supabase/migrations/20260629030000_rename_madb_series_titles.sql",
+          ),
+          "utf8",
+        ),
+        readFile(
+          path.join(
+            process.cwd(),
+            "supabase/migrations/20260630010000_merge_rakuten_manga_item_details.sql",
+          ),
+          "utf8",
+        ),
+        readFile(
+          path.join(
+            process.cwd(),
+            "supabase/migrations/20260630020000_create_madb_manga_series.sql",
+          ),
+          "utf8",
+        ),
+        readFile(
+          path.join(
+            process.cwd(),
+            "supabase/migrations/20260630030000_create_wiki_manga_series.sql",
+          ),
+          "utf8",
+        ),
+        readFile(
+          path.join(
+            process.cwd(),
+            "supabase/migrations/20260630040000_rebuild_manga_series_for_search.sql",
+          ),
+          "utf8",
+        ),
+        readFile(
+          path.join(
+            process.cwd(),
+            "supabase/migrations/20260701010000_create_madb_manga_items.sql",
+          ),
+          "utf8",
+        ),
+        readFile(
+          path.join(
+            process.cwd(),
+            "supabase/migrations/20260701030000_link_wiki_manga_items.sql",
+          ),
+          "utf8",
+        ),
+      ])
+    ).join("\n\n");
 
     stage = "connect";
     await client.connect();
@@ -99,6 +152,7 @@ export async function POST(request: Request) {
     const verification = await client.query<{
       series_count: string;
       genre_count: string;
+      search_title_count: string;
     }>(`
       select
         (select count(*)::text from public.manga_series) as series_count,
@@ -106,13 +160,21 @@ export async function POST(request: Request) {
           select count(*)::text
           from public.rakuten_import_genres
           where genre_id = '001001'
-        ) as genre_count
+        ) as genre_count,
+        (
+          select count(*)::text
+          from information_schema.columns
+          where table_schema = 'public'
+            and table_name = 'manga_series'
+            and column_name = 'search_title'
+        ) as search_title_count
     `);
     const rebuiltState = verification.rows[0];
 
     if (
       rebuiltState?.series_count !== "0" ||
-      rebuiltState?.genre_count !== "1"
+      rebuiltState?.genre_count !== "1" ||
+      rebuiltState?.search_title_count !== "1"
     ) {
       throw new Error("Rebuilt schema verification failed.");
     }
