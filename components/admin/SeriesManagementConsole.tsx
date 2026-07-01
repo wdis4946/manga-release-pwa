@@ -60,6 +60,9 @@ export function SeriesManagementConsole({
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState("");
   const [isUpdatingTitle, setIsUpdatingTitle] = useState(false);
+  const [isEditingSearchTitle, setIsEditingSearchTitle] = useState(false);
+  const [editedSearchTitle, setEditedSearchTitle] = useState("");
+  const [isUpdatingSearchTitle, setIsUpdatingSearchTitle] = useState(false);
   const [error, setError] = useState("");
 
   const pageCount = Math.max(1, Math.ceil(total / 50));
@@ -160,7 +163,9 @@ export function SeriesManagementConsole({
       const data = (await response.json()) as SeriesDetailResponse;
       setSelectedSeries(data.series);
       setEditedTitle(data.series.displayTitle);
+      setEditedSearchTitle(data.series.searchTitle);
       setIsEditingTitle(false);
+      setIsEditingSearchTitle(false);
       setItems(data.items);
       setIsDetailLoading(false);
     },
@@ -292,6 +297,59 @@ export function SeriesManagementConsole({
     setEditedTitle(updatedSeries.displayTitle);
     setIsEditingTitle(false);
     setIsUpdatingTitle(false);
+  }
+
+  async function updateSearchTitle(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!selectedSeriesId || !editedSearchTitle.trim()) {
+      return;
+    }
+
+    setIsUpdatingSearchTitle(true);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ searchTitle: editedSearchTitle.trim() }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError(
+        response.status === 409
+          ? "同じ検索用タイトルのシリーズがすでに存在します。"
+          : "検索用タイトルを更新できませんでした。",
+      );
+      setIsUpdatingSearchTitle(false);
+      return;
+    }
+
+    const data = (await response.json()) as {
+      series: Omit<ManagedMangaSeries, "itemCount">;
+    };
+    const updatedSeries = {
+      ...data.series,
+      itemCount: items.length,
+    };
+
+    setSelectedSeries(updatedSeries);
+    setSeries((current) =>
+      current.map((entry) =>
+        entry.id === updatedSeries.id
+          ? { ...entry, ...updatedSeries }
+          : entry,
+      ),
+    );
+    setEditedSearchTitle(updatedSeries.searchTitle);
+    setIsEditingSearchTitle(false);
+    setIsUpdatingSearchTitle(false);
   }
 
   async function logout() {
@@ -493,9 +551,68 @@ export function SeriesManagementConsole({
                         </button>
                       </div>
                     )}
-                    <p className="mt-1 text-xs text-stone-500">
-                      検索用タイトル: {currentSeries.searchTitle}
-                    </p>
+                    {isEditingSearchTitle ? (
+                      <form
+                        onSubmit={(event) => void updateSearchTitle(event)}
+                        className="mt-2 flex max-w-2xl items-center gap-2"
+                      >
+                        <input
+                          autoFocus
+                          value={editedSearchTitle}
+                          aria-label="検索用タイトル"
+                          onChange={(event) =>
+                            setEditedSearchTitle(event.target.value)
+                          }
+                          className="h-9 min-w-0 flex-1 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                        />
+                        <button
+                          type="submit"
+                          title="検索用タイトルを保存"
+                          disabled={
+                            isUpdatingSearchTitle ||
+                            !editedSearchTitle.trim() ||
+                            editedSearchTitle.trim() ===
+                              currentSeries.searchTitle
+                          }
+                          className="flex size-9 items-center justify-center rounded-md bg-cyan-700 text-white hover:bg-cyan-800 disabled:opacity-40"
+                        >
+                          {isUpdatingSearchTitle ? (
+                            <LoaderCircle className="size-4 animate-spin" />
+                          ) : (
+                            <Check className="size-4" />
+                          )}
+                        </button>
+                        <button
+                          type="button"
+                          title="キャンセル"
+                          disabled={isUpdatingSearchTitle}
+                          onClick={() => {
+                            setEditedSearchTitle(currentSeries.searchTitle);
+                            setIsEditingSearchTitle(false);
+                          }}
+                          className="flex size-9 items-center justify-center rounded-md border border-stone-300 bg-white text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+                        >
+                          <X className="size-4" />
+                        </button>
+                      </form>
+                    ) : (
+                      <div className="mt-1 flex items-center gap-2">
+                        <p className="text-xs text-stone-500">
+                          検索用タイトル: {currentSeries.searchTitle}
+                        </p>
+                        <button
+                          type="button"
+                          title="検索用タイトルを編集"
+                          onClick={() => {
+                            setEditedSearchTitle(currentSeries.searchTitle);
+                            setIsEditingSearchTitle(true);
+                          }}
+                          className="flex size-7 shrink-0 items-center justify-center rounded-md border border-stone-300 bg-white text-stone-600 hover:bg-stone-50"
+                        >
+                          <Pencil className="size-3.5" />
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <span className="text-sm font-bold text-cyan-800">
                     {items.length}冊

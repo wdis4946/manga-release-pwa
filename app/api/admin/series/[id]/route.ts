@@ -88,9 +88,7 @@ export async function GET(request: Request, context: RouteContext) {
         matchedAt: link.matched_at,
       };
     })
-    .sort((left, right) =>
-      left.title.localeCompare(right.title, "ja", { numeric: true }),
-    );
+    .sort((left, right) => left.isbn.localeCompare(right.isbn));
 
   return Response.json({
     series: {
@@ -111,12 +109,45 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const { id } = await context.params;
-  const body = (await request.json()) as { displayTitle?: string };
+  const body = (await request.json()) as {
+    displayTitle?: string;
+    searchTitle?: string;
+  };
   const displayTitle = body.displayTitle?.trim();
+  const searchTitle = body.searchTitle?.trim();
+  const updates: {
+    display_title?: string;
+    search_title?: string;
+    updated_at: string;
+  } = {
+    updated_at: new Date().toISOString(),
+  };
 
-  if (!displayTitle) {
+  if (body.displayTitle !== undefined && !displayTitle) {
     return Response.json(
       { error: "Display title is required." },
+      { status: 400 },
+    );
+  }
+
+  if (body.searchTitle !== undefined && !searchTitle) {
+    return Response.json(
+      { error: "Search title is required." },
+      { status: 400 },
+    );
+  }
+
+  if (displayTitle) {
+    updates.display_title = displayTitle;
+  }
+
+  if (searchTitle) {
+    updates.search_title = searchTitle;
+  }
+
+  if (!updates.display_title && !updates.search_title) {
+    return Response.json(
+      { error: "Display title or search title is required." },
       { status: 400 },
     );
   }
@@ -124,10 +155,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("manga_series")
-    .update({
-      display_title: displayTitle,
-      updated_at: new Date().toISOString(),
-    })
+    .update(updates)
     .eq("id", id)
     .select("id, search_title, display_title")
     .single();
