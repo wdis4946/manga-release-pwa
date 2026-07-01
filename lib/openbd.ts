@@ -16,8 +16,21 @@ export type OpenBdBook = {
 export async function fetchOpenBdBookByIsbn(
   isbn: string,
 ): Promise<OpenBdBook | undefined> {
+  const books = await fetchOpenBdBooksByIsbns([isbn]);
+  return books.get(isbn);
+}
+
+export async function fetchOpenBdBooksByIsbns(
+  isbns: string[],
+): Promise<Map<string, OpenBdBook>> {
+  const uniqueIsbns = Array.from(new Set(isbns.filter(Boolean)));
+
+  if (uniqueIsbns.length === 0) {
+    return new Map();
+  }
+
   const url = new URL(OPENBD_ENDPOINT);
-  url.searchParams.set("isbn", isbn);
+  url.searchParams.set("isbn", uniqueIsbns.join(","));
 
   const response = await fetch(url, {
     cache: "no-store",
@@ -31,5 +44,13 @@ export async function fetchOpenBdBookByIsbn(
   }
 
   const data = (await response.json()) as Array<OpenBdBook | null>;
-  return data[0] ?? undefined;
+  const books = new Map<string, OpenBdBook>();
+
+  data.forEach((book, index) => {
+    if (book) {
+      books.set(uniqueIsbns[index], book);
+    }
+  });
+
+  return books;
 }

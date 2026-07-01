@@ -1,4 +1,7 @@
-import { fetchOpenBdBookByIsbn } from "@/lib/openbd";
+import {
+  type OpenBdBook,
+  fetchOpenBdBooksByIsbns,
+} from "@/lib/openbd";
 import { fetchRakutenBookByIsbn } from "@/lib/rakuten/client";
 import { toRakutenMangaItemRow } from "@/lib/rakuten/import";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
@@ -30,6 +33,10 @@ type LinkResult = {
   linked: boolean;
   candidateCount: number;
   seriesId?: string;
+};
+
+type RakutenLookupState = {
+  lastLookupAt?: number;
 };
 
 export async function enrichUnmatchedTitles(request: Request) {
@@ -67,11 +74,20 @@ export async function enrichUnmatchedTitles(request: Request) {
     isbns: (data ?? []).map((issue) => issue.isbn),
   });
 
+  const targetIsbns = (data ?? []).map((issue) => issue.isbn);
+  const openBdBooks = await fetchOpenBdBookMap(targetIsbns);
+  const rakutenLookupState: RakutenLookupState = {};
+
   for (const issue of data ?? []) {
     let detail: EnrichmentDetail;
 
     try {
-      const sourceBook = await fetchAndSaveBook(supabase, issue.isbn);
+      const sourceBook = await fetchAndSaveBook(
+        supabase,
+        issue.isbn,
+        openBdBooks.get(issue.isbn),
+        rakutenLookupState,
+      );
 
       if (!sourceBook) {
         await updateIssue(supabase, issue.isbn, {
@@ -125,10 +141,6 @@ export async function enrichUnmatchedTitles(request: Request) {
     details.push(detail);
     totals.processedCount += 1;
     console.info("[Title enrichment] ISBN processed.", detail);
-
-    if (totals.processedCount < data.length) {
-      await delay(REQUEST_INTERVAL_MS);
-    }
   }
 
   console.info("[Title enrichment] Batch completed.", {
@@ -145,34 +157,72 @@ export async function enrichUnmatchedTitles(request: Request) {
 async function fetchAndSaveBook(
   supabase: SupabaseAdminClient,
   isbn: string,
+  openBdBook: OpenBdBook | undefined,
+  rakutenLookupState: RakutenLookupState,
 ): Promise<SourceBook | undefined> {
   const fetchedAt = new Date().toISOString();
-  const rakutenBook = await fetchRakutenBookByIsbn(isbn);
+  const openBdSource = await saveOpenBdBook(supabase, isbn, openBdBook, fetchedAt);
 
-  // Prefer Rakuten because its complete item shape already has a local table.
-  // openBD fills ISBNs that are no longer represented in Rakuten Books.
-  if (rakutenBook) {
-    const row = toRakutenMangaItemRow(rakutenBook, fetchedAt);
-    if (row) {
-      const { data, error } = await supabase
-        .from("rakuten_manga_items")
-        .upsert(row, { onConflict: "isbn" })
-        .select("title, normalized_title")
-        .single();
-
-      if (error) {
-        throw error;
-      }
-
-      return {
-        source: "rakuten",
-        title: data.title,
-        normalizedTitle: data.normalized_title,
-      };
-    }
+  // openBD supports bulk ISBN lookup, so it is the primary source here.
+  // Rakuten is only used for ISBNs that openBD cannot resolve.
+  if (openBdSource) {
+    return openBdSource;
   }
 
-  const openBdBook = await fetchOpenBdBookByIsbn(isbn);
+  await waitForRakutenRateLimit(rakutenLookupState);
+  const rakutenBook = await fetchRakutenBookByIsbn(isbn);
+
+  if (!rakutenBook) {
+    return undefined;
+  }
+
+  const row = toRakutenMangaItemRow(rakutenBook, fetchedAt);
+
+  if (!row) {
+    return undefined;
+  }
+
+  const { data, error } = await supabase
+    .from("rakuten_manga_items")
+    .upsert(row, { onConflict: "isbn" })
+    .select("title, normalized_title")
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    source: "rakuten",
+    title: data.title,
+    normalizedTitle: data.normalized_title,
+  };
+}
+
+async function fetchOpenBdBookMap(
+  isbns: string[],
+): Promise<Map<string, OpenBdBook>> {
+  try {
+    const books = await fetchOpenBdBooksByIsbns(isbns);
+    console.info("[Title enrichment] openBD batch completed.", {
+      requestedCount: isbns.length,
+      foundCount: books.size,
+    });
+    return books;
+  } catch (error) {
+    console.error("[Title enrichment] openBD batch failed.", {
+      error: getErrorMessage(error),
+    });
+    return new Map();
+  }
+}
+
+async function saveOpenBdBook(
+  supabase: SupabaseAdminClient,
+  isbn: string,
+  openBdBook: OpenBdBook | undefined,
+  fetchedAt: string,
+): Promise<SourceBook | undefined> {
   const summary = openBdBook?.summary;
 
   if (!openBdBook || !summary?.title) {
@@ -208,6 +258,21 @@ async function fetchAndSaveBook(
     title: data.title,
     normalizedTitle: data.normalized_title,
   };
+}
+
+async function waitForRakutenRateLimit(
+  state: RakutenLookupState,
+): Promise<void> {
+  if (state.lastLookupAt) {
+    const elapsed = Date.now() - state.lastLookupAt;
+    const waitTime = REQUEST_INTERVAL_MS - elapsed;
+
+    if (waitTime > 0) {
+      await delay(waitTime);
+    }
+  }
+
+  state.lastLookupAt = Date.now();
 }
 
 async function linkExactSeries(
