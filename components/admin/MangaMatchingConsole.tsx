@@ -592,6 +592,11 @@ export function MangaMatchingConsole() {
                       検索用: {candidate.searchTitle}
                     </p>
                   ) : null}
+                  {candidate.levenshteinDistance !== undefined ? (
+                    <p className="mt-1 text-xs font-semibold text-cyan-800">
+                      Levenshtein距離: {candidate.levenshteinDistance}
+                    </p>
+                  ) : null}
                   <button
                     type="button"
                     disabled={isMutating || selectedIssue?.isResolved}

@@ -18,6 +18,7 @@ export type MangaSeriesCandidate = {
   id: string;
   searchTitle: string;
   displayTitle: string;
+  levenshteinDistance?: number;
 };
 
 export type ManagedMangaSeries = MangaSeriesCandidate & {

@@ -120,6 +120,13 @@ export async function POST(request: Request) {
           ),
           "utf8",
         ),
+        readFile(
+          path.join(
+            process.cwd(),
+            "supabase/migrations/20260701040000_add_series_levenshtein_search.sql",
+          ),
+          "utf8",
+        ),
       ])
     ).join("\n\n");
 
