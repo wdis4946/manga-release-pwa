@@ -10,13 +10,21 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as {
     isbn?: string;
+    isbns?: string[];
     seriesId?: string;
     applyToGroup?: boolean;
   };
+  const selectedIsbns = Array.from(
+    new Set(
+      (body.isbns?.length ? body.isbns : body.isbn ? [body.isbn] : [])
+        .map((isbn) => isbn.trim())
+        .filter(Boolean),
+    ),
+  );
 
-  if (!body.isbn || !body.seriesId) {
+  if (selectedIsbns.length === 0 || !body.seriesId) {
     return Response.json(
-      { error: "ISBN and seriesId are required." },
+      { error: "At least one ISBN and seriesId are required." },
       { status: 400 },
     );
   }
@@ -32,13 +40,13 @@ export async function POST(request: Request) {
     return Response.json({ error: "Series not found." }, { status: 404 });
   }
 
-  let targetIsbns = [body.isbn];
+  let targetIsbns = selectedIsbns;
 
-  if (body.applyToGroup) {
+  if (body.applyToGroup && selectedIsbns.length === 1) {
     const { data: issue, error: issueError } = await supabase
       .from("manga_series_item_match_issues")
       .select("normalized_title")
-      .eq("isbn", body.isbn)
+      .eq("isbn", selectedIsbns[0])
       .single();
 
     if (issueError) {

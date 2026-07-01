@@ -51,11 +51,26 @@ export function MangaMatchingConsole() {
   const [error, setError] = useState("");
   const [showCreateSeries, setShowCreateSeries] = useState(false);
   const [newSeriesTitle, setNewSeriesTitle] = useState("");
+  const [selectedIssueIsbns, setSelectedIssueIsbns] = useState<Set<string>>(
+    () => new Set(),
+  );
 
   const selectedIssue = useMemo(
     () => issues.find((issue) => issue.isbn === selectedIsbn) ?? issues[0],
     [issues, selectedIsbn],
   );
+  const selectedBulkIsbns = useMemo(
+    () => Array.from(selectedIssueIsbns),
+    [selectedIssueIsbns],
+  );
+  const targetIsbns = selectedBulkIsbns.length
+    ? selectedBulkIsbns
+    : selectedIssue
+      ? [selectedIssue.isbn]
+      : [];
+  const allVisibleSelected =
+    issues.length > 0 &&
+    issues.every((issue) => selectedIssueIsbns.has(issue.isbn));
 
   const authorizedFetch = useCallback(
     (input: string, init?: RequestInit) =>
@@ -105,6 +120,14 @@ export function MangaMatchingConsole() {
     const data = (await response.json()) as IssueResponse;
     setIssues(data.issues);
     setTotal(data.total);
+    setSelectedIssueIsbns(
+      (current) =>
+        new Set(
+          Array.from(current).filter((isbn) =>
+            data.issues.some((issue) => issue.isbn === isbn),
+          ),
+        ),
+    );
     setSelectedIsbn((current) =>
       data.issues.some((issue) => issue.isbn === current)
         ? current
@@ -177,7 +200,7 @@ export function MangaMatchingConsole() {
   }, [accessToken, authorizedFetch, seriesSearch]);
 
   async function linkToSeries(seriesId: string) {
-    if (!selectedIssue) {
+    if (targetIsbns.length === 0) {
       return;
     }
 
@@ -187,9 +210,9 @@ export function MangaMatchingConsole() {
     const response = await authorizedFetch("/api/admin/matching/link", {
       method: "POST",
       body: JSON.stringify({
-        isbn: selectedIssue.isbn,
+        isbns: targetIsbns,
         seriesId,
-        applyToGroup,
+        applyToGroup: selectedBulkIsbns.length === 0 && applyToGroup,
       }),
     });
 
@@ -201,19 +224,20 @@ export function MangaMatchingConsole() {
     }
 
     await loadIssues();
+    setSelectedIssueIsbns(new Set());
     setIsMutating(false);
     setLinkingSeriesId(null);
   }
 
   async function ignoreIssue() {
-    if (!selectedIssue) {
+    if (targetIsbns.length === 0) {
       return;
     }
 
     setIsMutating(true);
     const response = await authorizedFetch("/api/admin/matching/ignore", {
       method: "POST",
-      body: JSON.stringify({ isbn: selectedIssue.isbn }),
+      body: JSON.stringify({ isbns: targetIsbns }),
     });
 
     if (!response.ok) {
@@ -223,7 +247,35 @@ export function MangaMatchingConsole() {
     }
 
     await loadIssues();
+    setSelectedIssueIsbns(new Set());
     setIsMutating(false);
+  }
+
+  function toggleIssueSelection(isbn: string) {
+    setSelectedIssueIsbns((current) => {
+      const next = new Set(current);
+
+      if (next.has(isbn)) {
+        next.delete(isbn);
+      } else {
+        next.add(isbn);
+      }
+
+      return next;
+    });
+  }
+
+  function toggleVisibleSelection() {
+    setSelectedIssueIsbns((current) => {
+      if (allVisibleSelected) {
+        return new Set();
+      }
+
+      return new Set([
+        ...Array.from(current),
+        ...issues.map((issue) => issue.isbn),
+      ]);
+    });
   }
 
   async function createAndLinkSeries(event: React.FormEvent) {
@@ -347,6 +399,30 @@ export function MangaMatchingConsole() {
                 />
               </div>
             </form>
+            <div className="flex items-center justify-between gap-2">
+              <label className="flex items-center gap-2 text-xs font-semibold text-stone-600">
+                <input
+                  type="checkbox"
+                  checked={allVisibleSelected}
+                  disabled={issues.length === 0}
+                  onChange={toggleVisibleSelection}
+                  className="size-4 accent-cyan-700"
+                />
+                表示中を選択
+              </label>
+              <button
+                type="button"
+                disabled={isMutating || targetIsbns.length === 0}
+                onClick={() => void ignoreIssue()}
+                className="flex h-8 items-center gap-1 rounded-md border border-stone-300 bg-white px-2 text-xs font-bold text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+              >
+                <SkipForward className="size-4" />
+                選択を対応不要
+              </button>
+            </div>
+            <p className="text-xs text-stone-500">
+              {selectedBulkIsbns.length.toLocaleString("ja-JP")}件選択中
+            </p>
           </div>
 
           <div className="max-h-[60vh] overflow-y-auto xl:max-h-[calc(100vh-273px)]">
@@ -360,16 +436,27 @@ export function MangaMatchingConsole() {
               </p>
             ) : (
               issues.map((issue) => (
-                <button
+                <div
                   key={issue.isbn}
-                  type="button"
-                  onClick={() => setSelectedIsbn(issue.isbn)}
                   className={`flex w-full gap-3 border-b border-stone-100 p-3 text-left ${
                     selectedIssue?.isbn === issue.isbn
                       ? "bg-cyan-50"
                       : "hover:bg-stone-50"
                   }`}
                 >
+                  <input
+                    type="checkbox"
+                    checked={selectedIssueIsbns.has(issue.isbn)}
+                    onChange={() => toggleIssueSelection(issue.isbn)}
+                    onClick={(event) => event.stopPropagation()}
+                    className="mt-6 size-4 shrink-0 accent-cyan-700"
+                    aria-label={`${issue.isbn}を選択`}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setSelectedIsbn(issue.isbn)}
+                    className="flex min-w-0 flex-1 gap-3 text-left"
+                  >
                   <div className="relative h-16 w-11 shrink-0 overflow-hidden rounded bg-stone-200">
                     {issue.coverImageUrl ? (
                       <Image
@@ -394,7 +481,8 @@ export function MangaMatchingConsole() {
                       {issue.isbn}
                     </p>
                   </div>
-                </button>
+                  </button>
+                </div>
               ))
             )}
           </div>
@@ -564,6 +652,7 @@ export function MangaMatchingConsole() {
             <input
               type="checkbox"
               checked={applyToGroup}
+              disabled={selectedBulkIsbns.length > 0}
               onChange={(event) => setApplyToGroup(event.target.checked)}
               className="size-4 accent-cyan-700"
             />
@@ -599,7 +688,7 @@ export function MangaMatchingConsole() {
                   ) : null}
                   <button
                     type="button"
-                    disabled={isMutating || selectedIssue?.isResolved}
+                    disabled={isMutating || targetIsbns.length === 0}
                     onClick={() => void linkToSeries(candidate.id)}
                     className="mt-3 flex h-8 w-full items-center justify-center gap-2 rounded-md bg-cyan-700 px-3 text-xs font-bold text-white hover:bg-cyan-800 disabled:opacity-40"
                   >

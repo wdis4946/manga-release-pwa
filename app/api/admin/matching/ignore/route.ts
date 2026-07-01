@@ -10,11 +10,19 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as {
     isbn?: string;
+    isbns?: string[];
     note?: string;
   };
+  const isbns = Array.from(
+    new Set(
+      (body.isbns?.length ? body.isbns : body.isbn ? [body.isbn] : [])
+        .map((isbn) => isbn.trim())
+        .filter(Boolean),
+    ),
+  );
 
-  if (!body.isbn) {
-    return Response.json({ error: "ISBN is required." }, { status: 400 });
+  if (isbns.length === 0) {
+    return Response.json({ error: "At least one ISBN is required." }, { status: 400 });
   }
 
   const now = new Date().toISOString();
@@ -28,11 +36,11 @@ export async function POST(request: Request) {
       resolution_note: body.note?.trim() || null,
       updated_at: now,
     })
-    .eq("isbn", body.isbn);
+    .in("isbn", isbns);
 
   if (error) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, ignoredCount: isbns.length });
 }
