@@ -53,7 +53,7 @@ export async function GET(request: Request) {
       : await supabase
           .from("rakuten_manga_items")
           .select(
-            "isbn, title, author, publisher_name, sales_date, large_image_url, medium_image_url, item_url",
+            "isbn, title, normalized_title, author, publisher_name, sales_date, large_image_url, medium_image_url, item_url",
           )
           .in("isbn", isbns);
 
@@ -65,12 +65,33 @@ export async function GET(request: Request) {
     );
   }
 
+  const { data: openBdItemRows, error: openBdItemError } =
+    isbns.length === 0
+      ? { data: [], error: null }
+      : await supabase
+          .from("openbd_manga_items")
+          .select(
+            "isbn, title, normalized_title, author, publisher, publication_date, cover_url",
+          )
+          .in("isbn", isbns);
+
+  if (openBdItemError) {
+    console.error(
+      "[Admin matching] Failed to load openBD item details.",
+      openBdItemError,
+    );
+    return Response.json(
+      { error: "Failed to load openBD item details." },
+      { status: 500 },
+    );
+  }
+
   const { data: madbItemRows, error: madbItemError } =
     isbns.length === 0
       ? { data: [], error: null }
       : await supabase
           .from("madb_manga_items")
-          .select("isbn, title, authors, publisher")
+          .select("isbn, title, normalized_title, authors, publisher")
           .in("isbn", isbns);
 
   if (madbItemError) {
@@ -87,29 +108,43 @@ export async function GET(request: Request) {
   const itemsByIsbn = new Map(
     (itemRows ?? []).map((item) => [item.isbn, item]),
   );
+  const openBdItemsByIsbn = new Map(
+    (openBdItemRows ?? []).map((item) => [item.isbn, item]),
+  );
   const madbItemsByIsbn = new Map(
     (madbItemRows ?? []).map((item) => [item.isbn, item]),
   );
   const issues = (issueRows ?? []).map((issue) => {
     const item = itemsByIsbn.get(issue.isbn);
+    const openBdItem = openBdItemsByIsbn.get(issue.isbn);
     const madbItem = madbItemsByIsbn.get(issue.isbn);
+
+    // Show the first available normalized title for this ISBN.
+    const normalizedTitle =
+      item?.normalized_title ??
+      openBdItem?.normalized_title ??
+      madbItem?.normalized_title ??
+      issue.normalized_title;
 
     return {
       isbn: issue.isbn,
-      normalizedTitle: issue.normalized_title,
+      normalizedTitle,
       issueType: issue.issue_type,
       candidateCount: issue.candidate_count,
       candidateSeriesIds: issue.candidate_series_ids,
       isResolved: issue.is_resolved,
       detectedAt: issue.detected_at,
-      // Keep the original Rakuten title separate from the normalized matching key.
-      title: item?.title ?? madbItem?.title ?? "タイトル不明",
-      author: item?.author ?? madbItem?.authors ?? null,
+      title:
+        item?.title ?? openBdItem?.title ?? madbItem?.title ?? "タイトル不明",
+      author: item?.author ?? openBdItem?.author ?? madbItem?.authors ?? null,
       publisherName:
-        item?.publisher_name ?? madbItem?.publisher ?? null,
-      salesDate: item?.sales_date ?? null,
+        item?.publisher_name ?? openBdItem?.publisher ?? madbItem?.publisher ?? null,
+      salesDate: item?.sales_date ?? openBdItem?.publication_date ?? null,
       coverImageUrl:
-        item?.large_image_url ?? item?.medium_image_url ?? null,
+        item?.large_image_url ??
+        item?.medium_image_url ??
+        openBdItem?.cover_url ??
+        null,
       itemUrl: item?.item_url ?? null,
     };
   });
