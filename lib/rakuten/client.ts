@@ -90,6 +90,13 @@ export async function fetchRakutenManga({
 export async function fetchRakutenMangaByIsbn(
   isbn: string,
 ): Promise<Manga | undefined> {
+  const item = await fetchRakutenBookByIsbn(isbn);
+  return item ? toManga(item) : undefined;
+}
+
+export async function fetchRakutenBookByIsbn(
+  isbn: string,
+): Promise<RakutenBook | undefined> {
   const credentials = getRakutenCredentials();
 
   const params = createBaseParams(credentials);
@@ -106,9 +113,7 @@ export async function fetchRakutenMangaByIsbn(
   );
 
   const data = (await response.json()) as RakutenBooksResponse;
-  const item = data.Items?.[0];
-
-  return item ? toManga(item) : undefined;
+  return data.Items?.[0];
 }
 
 export async function fetchRakutenBooksGenreNames(

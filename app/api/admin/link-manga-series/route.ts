@@ -1,4 +1,5 @@
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
+import { enrichUnmatchedTitles } from "@/lib/manga/title-enrichment";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 180;
@@ -24,6 +25,11 @@ export async function POST(request: Request) {
   }
 
   try {
+    if (new URL(request.url).searchParams.get("mode") === "enrich-titles") {
+      const result = await enrichUnmatchedTitles(request);
+      return Response.json({ ok: true, mode: "enrich-titles", ...result });
+    }
+
     const supabase = createSupabaseAdminClient();
     let cursor: string | null = null;
     let processedCount = 0;
