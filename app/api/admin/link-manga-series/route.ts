@@ -119,7 +119,7 @@ async function autoLinkUnresolvedIssues() {
       "auto_link_unresolved_match_issues_batch",
       {
         p_after_isbn: cursor,
-        p_batch_size: 500,
+        p_batch_size: 100,
         p_similarity_threshold: 0.83,
         p_min_similarity_length: 4,
       },
@@ -150,7 +150,7 @@ async function autoLinkUnresolvedIssues() {
       linkedCount,
     });
 
-    if (!cursor || batch.processed_count < 500) {
+    if (!cursor || batch.processed_count < 100) {
       break;
     }
   }
