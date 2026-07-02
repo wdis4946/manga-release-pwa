@@ -37,6 +37,11 @@ type SeriesDetailResponse = {
   items: ManagedSeriesItem[];
 };
 
+type BulkUnlinkResponse = {
+  unlinkedCount?: number;
+  missingIsbns?: string[];
+};
+
 type SeriesManagementConsoleProps = {
   initialQuery?: string;
 };
@@ -57,6 +62,10 @@ export function SeriesManagementConsole({
   const [isLoading, setIsLoading] = useState(true);
   const [isDetailLoading, setIsDetailLoading] = useState(false);
   const [unlinkingIsbn, setUnlinkingIsbn] = useState<string | null>(null);
+  const [isBulkUnlinking, setIsBulkUnlinking] = useState(false);
+  const [selectedItemIsbns, setSelectedItemIsbns] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [isEditingTitle, setIsEditingTitle] = useState(false);
   const [editedTitle, setEditedTitle] = useState("");
   const [isUpdatingTitle, setIsUpdatingTitle] = useState(false);
@@ -75,6 +84,12 @@ export function SeriesManagementConsole({
       null,
     [selectedSeries, selectedSeriesId, series],
   );
+  const selectedVisibleItemIsbns = useMemo(
+    () => items.filter((item) => selectedItemIsbns.has(item.isbn)),
+    [items, selectedItemIsbns],
+  );
+  const areAllVisibleItemsSelected =
+    items.length > 0 && selectedVisibleItemIsbns.length === items.length;
 
   const authorizedFetch = useCallback(
     (input: string, init?: RequestInit) =>
@@ -190,6 +205,7 @@ export function SeriesManagementConsole({
       setIsEditingTitle(false);
       setIsEditingSearchTitle(false);
       setItems(data.items);
+      setSelectedItemIsbns(new Set());
       setIsDetailLoading(false);
     },
     [accessToken, authorizedFetch, handleUnauthorized],
@@ -274,7 +290,91 @@ export function SeriesManagementConsole({
       loadSeriesDetail(selectedSeriesId),
       loadSeries(),
     ]);
+    setSelectedItemIsbns((current) => {
+      const next = new Set(current);
+      next.delete(item.isbn);
+      return next;
+    });
     setUnlinkingIsbn(null);
+  }
+
+  function toggleItemSelection(isbn: string) {
+    setSelectedItemIsbns((current) => {
+      const next = new Set(current);
+
+      if (next.has(isbn)) {
+        next.delete(isbn);
+      } else {
+        next.add(isbn);
+      }
+
+      return next;
+    });
+  }
+
+  function toggleVisibleItemsSelection() {
+    setSelectedItemIsbns((current) => {
+      if (areAllVisibleItemsSelected) {
+        return new Set();
+      }
+
+      const next = new Set(current);
+      for (const item of items) {
+        next.add(item.isbn);
+      }
+      return next;
+    });
+  }
+
+  async function bulkUnlinkItems() {
+    if (!selectedSeriesId || selectedVisibleItemIsbns.length === 0) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `選択した${selectedVisibleItemIsbns.length}件の紐づけを解除し、未対応issueへ戻しますか？`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsBulkUnlinking(true);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/items`,
+      {
+        method: "DELETE",
+        body: JSON.stringify({
+          isbns: selectedVisibleItemIsbns.map((item) => item.isbn),
+        }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError("選択したアイテムの紐づけを解除できませんでした。");
+      setIsBulkUnlinking(false);
+      return;
+    }
+
+    const data = (await response.json()) as BulkUnlinkResponse;
+    if ((data.missingIsbns?.length ?? 0) > 0) {
+      setError(
+        `${data.unlinkedCount ?? 0}件を解除しました。一部のISBNは既に紐づけが見つかりませんでした。`,
+      );
+    }
+
+    await Promise.all([
+      loadSeriesDetail(selectedSeriesId),
+      loadSeries(),
+    ]);
+    setSelectedItemIsbns(new Set());
+    setIsBulkUnlinking(false);
   }
 
   async function updateTitle(event: React.FormEvent) {
@@ -657,6 +757,42 @@ export function SeriesManagementConsole({
                 </p>
               ) : null}
 
+              {items.length > 0 ? (
+                <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-stone-200 bg-white px-3 py-2">
+                  <label className="flex items-center gap-2 text-sm font-semibold text-stone-700">
+                    <input
+                      type="checkbox"
+                      checked={areAllVisibleItemsSelected}
+                      onChange={toggleVisibleItemsSelection}
+                      className="size-4 accent-cyan-700"
+                    />
+                    表示中を選択
+                  </label>
+                  <div className="flex items-center gap-3">
+                    <span className="text-xs font-semibold text-stone-500">
+                      {selectedVisibleItemIsbns.length}件選択中
+                    </span>
+                    <button
+                      type="button"
+                      disabled={
+                        selectedVisibleItemIsbns.length === 0 ||
+                        unlinkingIsbn !== null ||
+                        isBulkUnlinking
+                      }
+                      onClick={() => void bulkUnlinkItems()}
+                      className="flex h-8 items-center gap-2 rounded-md border border-red-300 px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-40"
+                    >
+                      {isBulkUnlinking ? (
+                        <LoaderCircle className="size-4 animate-spin" />
+                      ) : (
+                        <Link2Off className="size-4" />
+                      )}
+                      選択を紐づけ解除
+                    </button>
+                  </div>
+                </div>
+              ) : null}
+
               {items.length === 0 ? (
                 <div className="py-20 text-center text-sm text-stone-500">
                   このシリーズに紐づくアイテムはありません
@@ -682,9 +818,18 @@ export function SeriesManagementConsole({
                         )}
                       </div>
                       <div className="flex min-w-0 flex-col">
-                        <h3 className="text-sm font-bold leading-5 text-stone-900">
-                          {item.title}
-                        </h3>
+                        <div className="flex items-start justify-between gap-2">
+                          <h3 className="min-w-0 text-sm font-bold leading-5 text-stone-900">
+                            {item.title}
+                          </h3>
+                          <input
+                            type="checkbox"
+                            checked={selectedItemIsbns.has(item.isbn)}
+                            onChange={() => toggleItemSelection(item.isbn)}
+                            aria-label={`${item.isbn}を選択`}
+                            className="mt-0.5 size-4 shrink-0 accent-cyan-700"
+                          />
+                        </div>
                         <p className="mt-1 text-xs text-stone-500">
                           {item.author || "著者未設定"}
                         </p>
@@ -713,7 +858,7 @@ export function SeriesManagementConsole({
                           ) : null}
                           <button
                             type="button"
-                            disabled={unlinkingIsbn !== null}
+                            disabled={unlinkingIsbn !== null || isBulkUnlinking}
                             onClick={() => void unlinkItem(item)}
                             className="flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-red-300 px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-40"
                           >
