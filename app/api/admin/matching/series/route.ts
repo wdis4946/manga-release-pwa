@@ -41,12 +41,19 @@ export async function GET(request: Request) {
     }),
   ]);
 
-  if (displayResult.error || searchResult.error || similarResult.error) {
+  if (displayResult.error || searchResult.error) {
     console.error(
       "[Admin matching] Failed to search series.",
-      displayResult.error ?? searchResult.error ?? similarResult.error,
+      displayResult.error ?? searchResult.error,
     );
     return Response.json({ error: "Search failed." }, { status: 500 });
+  }
+
+  if (similarResult.error) {
+    console.error(
+      "[Admin matching] Similar series search failed.",
+      similarResult.error,
+    );
   }
 
   const similarRows = (similarResult.data ?? []) as SimilarSeriesRow[];
