@@ -72,6 +72,9 @@ export function SeriesManagementConsole({
   const [isEditingSearchTitle, setIsEditingSearchTitle] = useState(false);
   const [editedSearchTitle, setEditedSearchTitle] = useState("");
   const [isUpdatingSearchTitle, setIsUpdatingSearchTitle] = useState(false);
+  const [editedCategoryNumber, setEditedCategoryNumber] = useState("0");
+  const [editedCategoryName, setEditedCategoryName] = useState("default");
+  const [isUpdatingCategory, setIsUpdatingCategory] = useState(false);
   const [error, setError] = useState("");
   const seriesRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
@@ -202,6 +205,8 @@ export function SeriesManagementConsole({
       setSelectedSeries(data.series);
       setEditedTitle(data.series.displayTitle);
       setEditedSearchTitle(data.series.searchTitle);
+      setEditedCategoryNumber(String(data.series.categoryNumber));
+      setEditedCategoryName(data.series.categoryName);
       setIsEditingTitle(false);
       setIsEditingSearchTitle(false);
       setItems(data.items);
@@ -483,6 +488,69 @@ export function SeriesManagementConsole({
     setIsUpdatingSearchTitle(false);
   }
 
+  async function updateCategory(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!selectedSeriesId || !editedCategoryName.trim()) {
+      return;
+    }
+
+    const categoryNumber = Number(editedCategoryNumber);
+
+    if (!Number.isInteger(categoryNumber) || categoryNumber < 0) {
+      setError("カテゴリ番号は0以上の整数で入力してください。");
+      return;
+    }
+
+    setIsUpdatingCategory(true);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          categoryNumber,
+          categoryName: editedCategoryName.trim(),
+        }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError(
+        response.status === 409
+          ? "同じ検索用タイトルとカテゴリ番号のシリーズが既に存在します。"
+          : "カテゴリを更新できませんでした。",
+      );
+      setIsUpdatingCategory(false);
+      return;
+    }
+
+    const data = (await response.json()) as {
+      series: Omit<ManagedMangaSeries, "itemCount">;
+    };
+    const updatedSeries = {
+      ...data.series,
+      itemCount: items.length,
+    };
+
+    setSelectedSeries(updatedSeries);
+    setSeries((current) =>
+      current.map((entry) =>
+        entry.id === updatedSeries.id
+          ? { ...entry, ...updatedSeries }
+          : entry,
+      ),
+    );
+    setEditedCategoryNumber(String(updatedSeries.categoryNumber));
+    setEditedCategoryName(updatedSeries.categoryName);
+    setIsUpdatingCategory(false);
+  }
+
   async function logout() {
     await createSupabaseBrowserClient().auth.signOut();
     router.replace("/admin/login");
@@ -579,6 +647,9 @@ export function SeriesManagementConsole({
                       検索用: {entry.searchTitle}
                     </p>
                   ) : null}
+                  <p className="mt-1 text-xs font-semibold text-stone-500">
+                    カテゴリ {entry.categoryNumber}: {entry.categoryName}
+                  </p>
                   <div className="mt-1 flex items-center justify-between gap-3">
                     <span className="shrink-0 text-xs font-semibold text-cyan-800">
                       {entry.itemCount}冊
@@ -744,6 +815,56 @@ export function SeriesManagementConsole({
                         </button>
                       </div>
                     )}
+                    <form
+                      onSubmit={(event) => void updateCategory(event)}
+                      className="mt-3 flex flex-wrap items-end gap-2"
+                    >
+                      <label className="flex flex-col gap-1">
+                        <span className="text-[11px] font-semibold text-stone-500">
+                          カテゴリ番号
+                        </span>
+                        <input
+                          type="number"
+                          min={0}
+                          value={editedCategoryNumber}
+                          onChange={(event) =>
+                            setEditedCategoryNumber(event.target.value)
+                          }
+                          className="h-9 w-28 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                        />
+                      </label>
+                      <label className="flex min-w-[180px] flex-1 flex-col gap-1">
+                        <span className="text-[11px] font-semibold text-stone-500">
+                          カテゴリ名
+                        </span>
+                        <input
+                          value={editedCategoryName}
+                          onChange={(event) =>
+                            setEditedCategoryName(event.target.value)
+                          }
+                          className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                        />
+                      </label>
+                      <button
+                        type="submit"
+                        disabled={
+                          isUpdatingCategory ||
+                          !editedCategoryName.trim() ||
+                          (Number(editedCategoryNumber) ===
+                            currentSeries.categoryNumber &&
+                            editedCategoryName.trim() ===
+                              currentSeries.categoryName)
+                        }
+                        className="flex h-9 items-center gap-2 rounded-md bg-cyan-700 px-3 text-xs font-bold text-white hover:bg-cyan-800 disabled:opacity-40"
+                      >
+                        {isUpdatingCategory ? (
+                          <LoaderCircle className="size-4 animate-spin" />
+                        ) : (
+                          <Check className="size-4" />
+                        )}
+                        カテゴリ保存
+                      </button>
+                    </form>
                   </div>
                   <span className="text-sm font-bold text-cyan-800">
                     {items.length}冊

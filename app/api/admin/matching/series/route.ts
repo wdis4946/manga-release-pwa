@@ -5,6 +5,8 @@ type SimilarSeriesRow = {
   id: string;
   search_title: string;
   display_title: string;
+  category_number?: number;
+  category_name?: string;
   similarity_score: number;
 };
 
@@ -25,15 +27,17 @@ export async function GET(request: Request) {
   const [displayResult, searchResult, similarResult] = await Promise.all([
     supabase
       .from("manga_series")
-      .select("id, search_title, display_title")
+      .select("id, search_title, display_title, category_number, category_name")
       .ilike("display_title", `%${queryText}%`)
       .order("display_title")
+      .order("category_number")
       .limit(25),
     supabase
       .from("manga_series")
-      .select("id, search_title, display_title")
+      .select("id, search_title, display_title, category_number, category_name")
       .ilike("search_title", `%${queryText}%`)
       .order("display_title")
+      .order("category_number")
       .limit(25),
     supabase.rpc("find_similar_manga_series", {
       p_normalized_title: queryText,
@@ -69,6 +73,8 @@ export async function GET(request: Request) {
       id: series.id,
       searchTitle: series.search_title,
       displayTitle: series.display_title,
+      categoryNumber: series.category_number ?? 0,
+      categoryName: series.category_name ?? "default",
       similarityScore: similarityScores.get(series.id),
     })),
   });
@@ -83,12 +89,23 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as {
     displayTitle?: string;
+    categoryNumber?: number;
+    categoryName?: string;
   };
   const displayTitle = body.displayTitle?.trim();
+  const categoryNumber = body.categoryNumber ?? 0;
+  const categoryName = body.categoryName?.trim() || "default";
 
   if (!displayTitle) {
     return Response.json(
       { error: "Display title is required." },
+      { status: 400 },
+    );
+  }
+
+  if (!Number.isInteger(categoryNumber) || categoryNumber < 0) {
+    return Response.json(
+      { error: "Category number must be a non-negative integer." },
       { status: 400 },
     );
   }
@@ -98,8 +115,10 @@ export async function POST(request: Request) {
     .insert({
       search_title: displayTitle,
       display_title: displayTitle,
+      category_number: categoryNumber,
+      category_name: categoryName,
     })
-    .select("id, search_title, display_title")
+    .select("id, search_title, display_title, category_number, category_name")
     .single();
 
   if (error) {
@@ -112,6 +131,8 @@ export async function POST(request: Request) {
       id: data.id,
       searchTitle: data.search_title,
       displayTitle: data.display_title,
+      categoryNumber: data.category_number,
+      categoryName: data.category_name,
     },
   });
 }

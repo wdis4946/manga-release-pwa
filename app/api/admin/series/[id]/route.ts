@@ -16,7 +16,7 @@ export async function GET(request: Request, context: RouteContext) {
   const supabase = createSupabaseAdminClient();
   const { data: series, error: seriesError } = await supabase
     .from("manga_series")
-    .select("id, search_title, display_title")
+    .select("id, search_title, display_title, category_number, category_name")
     .eq("id", id)
     .maybeSingle();
 
@@ -125,6 +125,8 @@ export async function GET(request: Request, context: RouteContext) {
       id: series.id,
       searchTitle: series.search_title,
       displayTitle: series.display_title,
+      categoryNumber: series.category_number,
+      categoryName: series.category_name,
       itemCount: linkedItems.length,
     },
     items: linkedItems,
@@ -142,12 +144,17 @@ export async function PATCH(request: Request, context: RouteContext) {
   const body = (await request.json()) as {
     displayTitle?: string;
     searchTitle?: string;
+    categoryNumber?: number;
+    categoryName?: string;
   };
   const displayTitle = body.displayTitle?.trim();
   const searchTitle = body.searchTitle?.trim();
+  const categoryName = body.categoryName?.trim();
   const updates: {
     display_title?: string;
     search_title?: string;
+    category_number?: number;
+    category_name?: string;
     updated_at: string;
   } = {
     updated_at: new Date().toISOString(),
@@ -167,6 +174,23 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
   }
 
+  if (
+    body.categoryNumber !== undefined &&
+    (!Number.isInteger(body.categoryNumber) || body.categoryNumber < 0)
+  ) {
+    return Response.json(
+      { error: "Category number must be a non-negative integer." },
+      { status: 400 },
+    );
+  }
+
+  if (body.categoryName !== undefined && !categoryName) {
+    return Response.json(
+      { error: "Category name is required." },
+      { status: 400 },
+    );
+  }
+
   if (displayTitle) {
     updates.display_title = displayTitle;
   }
@@ -175,9 +199,22 @@ export async function PATCH(request: Request, context: RouteContext) {
     updates.search_title = searchTitle;
   }
 
-  if (!updates.display_title && !updates.search_title) {
+  if (body.categoryNumber !== undefined) {
+    updates.category_number = body.categoryNumber;
+  }
+
+  if (categoryName) {
+    updates.category_name = categoryName;
+  }
+
+  if (
+    !updates.display_title &&
+    !updates.search_title &&
+    updates.category_number === undefined &&
+    !updates.category_name
+  ) {
     return Response.json(
-      { error: "Display title or search title is required." },
+      { error: "At least one series field is required." },
       { status: 400 },
     );
   }
@@ -187,7 +224,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     .from("manga_series")
     .update(updates)
     .eq("id", id)
-    .select("id, search_title, display_title")
+    .select("id, search_title, display_title, category_number, category_name")
     .single();
 
   if (error) {
@@ -200,6 +237,8 @@ export async function PATCH(request: Request, context: RouteContext) {
       id: data.id,
       searchTitle: data.search_title,
       displayTitle: data.display_title,
+      categoryNumber: data.category_number,
+      categoryName: data.category_name,
     },
   });
 }
