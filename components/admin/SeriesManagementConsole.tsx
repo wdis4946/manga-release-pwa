@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -64,6 +64,8 @@ export function SeriesManagementConsole({
   const [editedSearchTitle, setEditedSearchTitle] = useState("");
   const [isUpdatingSearchTitle, setIsUpdatingSearchTitle] = useState(false);
   const [error, setError] = useState("");
+  const seriesRequestIdRef = useRef(0);
+  const detailRequestIdRef = useRef(0);
 
   const pageCount = Math.max(1, Math.ceil(total / 50));
   const currentSeries = useMemo(
@@ -97,6 +99,8 @@ export function SeriesManagementConsole({
       return;
     }
 
+    const requestId = seriesRequestIdRef.current + 1;
+    seriesRequestIdRef.current = requestId;
     setIsLoading(true);
     setError("");
     const params = new URLSearchParams({
@@ -114,6 +118,10 @@ export function SeriesManagementConsole({
       return;
     }
 
+    if (requestId !== seriesRequestIdRef.current) {
+      return;
+    }
+
     if (!response.ok) {
       setError("シリーズ一覧を取得できませんでした。");
       setIsLoading(false);
@@ -121,6 +129,10 @@ export function SeriesManagementConsole({
     }
 
     const data = (await response.json()) as SeriesResponse;
+    if (requestId !== seriesRequestIdRef.current) {
+      return;
+    }
+
     setSeries(data.series);
     setTotal(data.total);
     setSelectedSeriesId((current) =>
@@ -140,17 +152,24 @@ export function SeriesManagementConsole({
   const loadSeriesDetail = useCallback(
     async (seriesId: string) => {
       if (!accessToken || !seriesId) {
+        detailRequestIdRef.current += 1;
         setSelectedSeries(null);
         setItems([]);
         return;
       }
 
+      const requestId = detailRequestIdRef.current + 1;
+      detailRequestIdRef.current = requestId;
       setIsDetailLoading(true);
       setError("");
       const response = await authorizedFetch(`/api/admin/series/${seriesId}`);
 
       if (response.status === 401) {
         await handleUnauthorized();
+        return;
+      }
+
+      if (requestId !== detailRequestIdRef.current) {
         return;
       }
 
@@ -161,6 +180,10 @@ export function SeriesManagementConsole({
       }
 
       const data = (await response.json()) as SeriesDetailResponse;
+      if (requestId !== detailRequestIdRef.current) {
+        return;
+      }
+
       setSelectedSeries(data.series);
       setEditedTitle(data.series.displayTitle);
       setEditedSearchTitle(data.series.searchTitle);
@@ -196,9 +219,17 @@ export function SeriesManagementConsole({
   }, [router]);
 
   useEffect(() => {
-    const timeout = window.setTimeout(() => void loadSeries(), 0);
+    const timeout = window.setTimeout(() => void loadSeries(), 250);
     return () => window.clearTimeout(timeout);
   }, [loadSeries]);
+
+  useEffect(() => {
+    seriesRequestIdRef.current += 1;
+  }, [page, queryText]);
+
+  useEffect(() => {
+    detailRequestIdRef.current += 1;
+  }, [selectedSeriesId]);
 
   useEffect(() => {
     const timeout = window.setTimeout(
