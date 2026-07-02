@@ -90,8 +90,10 @@ export async function POST(request: Request) {
 
   const body = (await request.json()) as {
     displayTitle?: string;
+    searchTitle?: string;
   };
   const displayTitle = body.displayTitle?.trim();
+  const searchTitle = body.searchTitle?.trim() || displayTitle;
 
   if (!displayTitle) {
     return Response.json(
@@ -103,7 +105,7 @@ export async function POST(request: Request) {
   const { data, error } = await createSupabaseAdminClient()
     .from("manga_series")
     .insert({
-      search_title: displayTitle,
+      search_title: searchTitle,
       display_title: displayTitle,
     })
     .select("id, search_title, display_title")

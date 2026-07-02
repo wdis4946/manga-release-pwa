@@ -56,7 +56,8 @@ export function MangaMatchingConsole() {
   const [linkingSeriesId, setLinkingSeriesId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [showCreateSeries, setShowCreateSeries] = useState(false);
-  const [newSeriesTitle, setNewSeriesTitle] = useState("");
+  const [newSeriesDisplayTitle, setNewSeriesDisplayTitle] = useState("");
+  const [newSeriesSearchTitle, setNewSeriesSearchTitle] = useState("");
   const [selectedIssueIsbns, setSelectedIssueIsbns] = useState<Set<string>>(
     () => new Set(),
   );
@@ -171,13 +172,16 @@ export function MangaMatchingConsole() {
   }, [loadIssues]);
 
   useEffect(() => {
+    const nextTitle = selectedIssue?.normalizedTitle ?? "";
     const timeout = window.setTimeout(() => {
       setSeries([]);
-      setSeriesSearch(selectedIssue?.normalizedTitle ?? "");
+      setSeriesSearch(nextTitle);
+      setNewSeriesDisplayTitle(selectedIssue?.title ?? nextTitle);
+      setNewSeriesSearchTitle(nextTitle);
     }, 0);
 
     return () => window.clearTimeout(timeout);
-  }, [selectedIssue?.isbn, selectedIssue?.normalizedTitle]);
+  }, [selectedIssue?.isbn, selectedIssue?.normalizedTitle, selectedIssue?.title]);
 
   useEffect(() => {
     if (!accessToken || !seriesSearch.trim()) {
@@ -296,7 +300,11 @@ export function MangaMatchingConsole() {
   async function createAndLinkSeries(event: React.FormEvent) {
     event.preventDefault();
 
-    if (!newSeriesTitle.trim() || !selectedIssue) {
+    if (
+      !newSeriesDisplayTitle.trim() ||
+      !newSeriesSearchTitle.trim() ||
+      !selectedIssue
+    ) {
       return;
     }
 
@@ -306,7 +314,10 @@ export function MangaMatchingConsole() {
       "/api/admin/matching/series",
       {
         method: "POST",
-        body: JSON.stringify({ displayTitle: newSeriesTitle }),
+        body: JSON.stringify({
+          displayTitle: newSeriesDisplayTitle.trim(),
+          searchTitle: newSeriesSearchTitle.trim(),
+        }),
       },
     );
 
@@ -320,7 +331,8 @@ export function MangaMatchingConsole() {
       series: MangaSeriesCandidate;
     };
     setShowCreateSeries(false);
-    setNewSeriesTitle("");
+    setNewSeriesDisplayTitle("");
+    setNewSeriesSearchTitle("");
     await linkToSeries(data.series.id);
   }
 
@@ -618,7 +630,9 @@ export function MangaMatchingConsole() {
               type="button"
               title="新規シリーズ"
               onClick={() => {
-                setNewSeriesTitle(selectedIssue?.normalizedTitle ?? "");
+                const nextTitle = selectedIssue?.normalizedTitle ?? "";
+                setNewSeriesDisplayTitle(selectedIssue?.title ?? nextTitle);
+                setNewSeriesSearchTitle(nextTitle);
                 setShowCreateSeries((current) => !current);
               }}
               className="flex size-8 items-center justify-center rounded-md border border-stone-300 hover:bg-stone-50"
@@ -632,16 +646,41 @@ export function MangaMatchingConsole() {
               className="mb-4 space-y-2 border-b border-stone-200 pb-4"
               onSubmit={(event) => void createAndLinkSeries(event)}
             >
-              <input
-                required
-                value={newSeriesTitle}
-                onChange={(event) => setNewSeriesTitle(event.target.value)}
-                placeholder="新しいシリーズ名"
-                className="h-9 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
-              />
+              <label className="block space-y-1">
+                <span className="text-[11px] font-semibold text-stone-500">
+                  表示用タイトル
+                </span>
+                <input
+                  required
+                  value={newSeriesDisplayTitle}
+                  onChange={(event) =>
+                    setNewSeriesDisplayTitle(event.target.value)
+                  }
+                  placeholder="画面に表示するタイトル"
+                  className="h-9 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                />
+              </label>
+              <label className="block space-y-1">
+                <span className="text-[11px] font-semibold text-stone-500">
+                  検索用タイトル
+                </span>
+                <input
+                  required
+                  value={newSeriesSearchTitle}
+                  onChange={(event) =>
+                    setNewSeriesSearchTitle(event.target.value)
+                  }
+                  placeholder="正規化後の検索用タイトル"
+                  className="h-9 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                />
+              </label>
               <button
                 type="submit"
-                disabled={isMutating}
+                disabled={
+                  isMutating ||
+                  !newSeriesDisplayTitle.trim() ||
+                  !newSeriesSearchTitle.trim()
+                }
                 className="flex h-9 w-full items-center justify-center gap-2 rounded-md bg-stone-900 px-3 text-sm font-bold text-white disabled:opacity-50"
               >
                 <Plus className="size-4" />

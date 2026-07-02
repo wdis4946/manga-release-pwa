@@ -236,3 +236,23 @@ export async function PATCH(request: Request, context: RouteContext) {
     },
   });
 }
+
+export async function DELETE(request: Request, context: RouteContext) {
+  const user = await getAdminUser(request);
+
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await context.params;
+  const { error } = await createSupabaseAdminClient()
+    .from("manga_series")
+    .delete()
+    .eq("id", id);
+
+  if (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+
+  return Response.json({ ok: true });
+}

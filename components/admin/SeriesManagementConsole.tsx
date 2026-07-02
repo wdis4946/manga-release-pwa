@@ -18,6 +18,7 @@ import {
   Plus,
   RefreshCw,
   Search,
+  Trash2,
   X,
 } from "lucide-react";
 import type {
@@ -93,6 +94,10 @@ export function SeriesManagementConsole({
   const [movingItemIsbn, setMovingItemIsbn] = useState<string | null>(null);
   const [bulkMoveCategoryNumber, setBulkMoveCategoryNumber] = useState("0");
   const [isBulkMoving, setIsBulkMoving] = useState(false);
+  const [isDeletingSeries, setIsDeletingSeries] = useState(false);
+  const [deletingCategoryNumber, setDeletingCategoryNumber] = useState<
+    number | null
+  >(null);
   const [error, setError] = useState("");
   const seriesRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
@@ -743,6 +748,86 @@ export function SeriesManagementConsole({
 
     setIsBulkMoving(false);
   }
+
+  async function deleteSeries() {
+    if (!selectedSeriesId || !currentSeries) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `「${currentSeries.displayTitle}」を削除しますか？紐づきカテゴリとアイテムの紐づけも削除されます。`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsDeletingSeries(true);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}`,
+      { method: "DELETE" },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError("シリーズを削除できませんでした。");
+      setIsDeletingSeries(false);
+      return;
+    }
+
+    setSelectedSeriesId("");
+    setSelectedSeries(null);
+    setCategories([]);
+    setItems([]);
+    setSelectedItemIsbns(new Set());
+    await loadSeries();
+    setIsDeletingSeries(false);
+  }
+
+  async function deleteCategory(category: ManagedSeriesCategory) {
+    if (!selectedSeriesId) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `カテゴリ「${category.categoryName}」を削除しますか？アイテムが入っているカテゴリは削除できません。`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingCategoryNumber(category.categoryNumber);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/categories/${category.categoryNumber}`,
+      { method: "DELETE" },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError(
+        response.status === 409
+          ? "アイテムが入っているカテゴリは削除できません。先に別カテゴリへ移動してください。"
+          : "カテゴリを削除できませんでした。",
+      );
+      setDeletingCategoryNumber(null);
+      return;
+    }
+
+    await loadSeriesDetail(selectedSeriesId);
+    setDeletingCategoryNumber(null);
+  }
+
   async function logout() {
     await createSupabaseBrowserClient().auth.signOut();
     router.replace("/admin/login");
@@ -1005,9 +1090,24 @@ export function SeriesManagementConsole({
                       </div>
                     )}
                   </div>
-                  <span className="text-sm font-bold text-cyan-800">
-                    {items.length}冊
-                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-bold text-cyan-800">
+                      {items.length}冊
+                    </span>
+                    <button
+                      type="button"
+                      disabled={isDeletingSeries}
+                      onClick={() => void deleteSeries()}
+                      className="flex h-8 items-center gap-2 rounded-md border border-red-300 bg-white px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-40"
+                    >
+                      {isDeletingSeries ? (
+                        <LoaderCircle className="size-4 animate-spin" />
+                      ) : (
+                        <Trash2 className="size-4" />
+                      )}
+                      シリーズ削除
+                    </button>
+                  </div>
                 </div>
               </div>
 
@@ -1091,12 +1191,7 @@ export function SeriesManagementConsole({
                 </div>
               ) : null}
 
-              {items.length === 0 ? (
-                <div className="py-20 text-center text-sm text-stone-500">
-                  このシリーズに紐づくアイテムはありません
-                </div>
-              ) : (
-                <div className="mt-4 space-y-6">
+              <div className="mt-4 space-y-6">
                   <form
                     onSubmit={(event) => void addCategory(event)}
                     className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-stone-300 bg-white px-3 py-3"
@@ -1205,6 +1300,27 @@ export function SeriesManagementConsole({
                                 <Check className="size-4" />
                               )}
                               保存
+                            </button>
+                            <button
+                              type="button"
+                              title={
+                                group.items.length > 0
+                                  ? "アイテムが入っているカテゴリは削除できません"
+                                  : "カテゴリを削除"
+                              }
+                              disabled={
+                                group.items.length > 0 ||
+                                deletingCategoryNumber === group.categoryNumber
+                              }
+                              onClick={() => void deleteCategory(group)}
+                              className="flex h-9 items-center gap-2 rounded-md border border-red-300 bg-white px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-40"
+                            >
+                              {deletingCategoryNumber === group.categoryNumber ? (
+                                <LoaderCircle className="size-4 animate-spin" />
+                              ) : (
+                                <Trash2 className="size-4" />
+                              )}
+                              削除
                             </button>
                           </div>
                           <span className="text-xs font-bold text-stone-500">
@@ -1322,8 +1438,12 @@ export function SeriesManagementConsole({
                       </section>
                     );
                   })}
-                </div>
-              )}
+                {items.length === 0 ? (
+                  <div className="rounded-md border border-stone-200 bg-white px-4 py-8 text-center text-sm text-stone-500">
+                    このシリーズに紐づくアイテムはありません
+                  </div>
+                ) : null}
+              </div>
             </div>
           ) : (
             <div className="py-20 text-center text-sm text-stone-500">

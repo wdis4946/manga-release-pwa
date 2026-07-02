@@ -69,3 +69,57 @@ export async function PATCH(request: Request, context: RouteContext) {
     },
   });
 }
+
+export async function DELETE(_request: Request, context: RouteContext) {
+  const user = await getAdminUser(_request);
+
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id, categoryNumber: categoryNumberParam } = await context.params;
+  const categoryNumber = Number(decodeURIComponent(categoryNumberParam));
+
+  if (!Number.isInteger(categoryNumber) || categoryNumber < 0) {
+    return Response.json(
+      { error: "Category number must be a non-negative integer." },
+      { status: 400 },
+    );
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { count, error: countError } = await supabase
+    .from("manga_series_items")
+    .select("isbn", { count: "exact", head: true })
+    .eq("series_id", id)
+    .eq("category_number", categoryNumber);
+
+  if (countError) {
+    return Response.json({ error: countError.message }, { status: 500 });
+  }
+
+  if ((count ?? 0) > 0) {
+    return Response.json(
+      { error: "Category still has items." },
+      { status: 409 },
+    );
+  }
+
+  const { data, error } = await supabase
+    .from("manga_series_categories")
+    .delete()
+    .eq("series_id", id)
+    .eq("category_number", categoryNumber)
+    .select("category_number")
+    .maybeSingle();
+
+  if (error) {
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+
+  if (!data) {
+    return Response.json({ error: "Category not found." }, { status: 404 });
+  }
+
+  return Response.json({ ok: true });
+}
