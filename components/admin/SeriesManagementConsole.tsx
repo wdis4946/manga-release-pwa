@@ -764,7 +764,7 @@ export function SeriesManagementConsole({
               className="flex h-9 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
             >
               <ListChecks className="size-4" />
-              issue邂｡逅・
+              紐づけ管理
             </Link>
             <button
               type="button"
@@ -780,7 +780,7 @@ export function SeriesManagementConsole({
               className="flex h-9 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
             >
               <LogOut className="size-4" />
-              繝ｭ繧ｰ繧｢繧ｦ繝・
+              ログアウト
             </button>
           </div>
         </div>
@@ -801,7 +801,7 @@ export function SeriesManagementConsole({
               <input
                 value={queryText}
                 onChange={(event) => setQueryText(event.target.value)}
-                placeholder="繧ｷ繝ｪ繝ｼ繧ｺ蜷阪〒讀懃ｴ｢"
+                placeholder="シリーズ名で検索"
                 className="h-9 w-full rounded-md border border-stone-300 pl-9 pr-3 text-sm outline-none focus:border-cyan-700"
               />
             </div>
@@ -814,7 +814,7 @@ export function SeriesManagementConsole({
               </div>
             ) : series.length === 0 ? (
               <p className="p-6 text-center text-sm text-stone-500">
-                繧ｷ繝ｪ繝ｼ繧ｺ縺後≠繧翫∪縺帙ｓ
+                シリーズがありません
               </p>
             ) : (
               series.map((entry) => (
@@ -836,12 +836,13 @@ export function SeriesManagementConsole({
                   </p>
                   {entry.searchTitle !== entry.displayTitle ? (
                     <p className="mt-1 truncate text-xs text-stone-500">
-                      讀懃ｴ｢逕ｨ: {entry.searchTitle}
+                      検索用: {entry.searchTitle}
                     </p>
                   ) : null}
                   <div className="mt-1 flex items-center justify-between gap-3">
                     <span className="shrink-0 text-xs font-semibold text-cyan-800">
-                      {entry.itemCount}蜀・                    </span>
+                      {entry.itemCount}冊
+                    </span>
                   </div>
                 </button>
               ))
@@ -949,7 +950,7 @@ export function SeriesManagementConsole({
                         <input
                           autoFocus
                           value={editedSearchTitle}
-                          aria-label="讀懃ｴ｢逕ｨ繧ｿ繧､繝医Ν"
+                          aria-label="検索用タイトル"
                           onChange={(event) =>
                             setEditedSearchTitle(event.target.value)
                           }
@@ -988,7 +989,7 @@ export function SeriesManagementConsole({
                     ) : (
                       <div className="mt-1 flex items-center gap-2">
                         <p className="text-xs text-stone-500">
-                          讀懃ｴ｢逕ｨ繧ｿ繧､繝医Ν: {currentSeries.searchTitle}
+                          検索用タイトル: {currentSeries.searchTitle}
                         </p>
                         <button
                           type="button"
@@ -1005,7 +1006,8 @@ export function SeriesManagementConsole({
                     )}
                   </div>
                   <span className="text-sm font-bold text-cyan-800">
-                    {items.length}蜀・                  </span>
+                    {items.length}冊
+                  </span>
                 </div>
               </div>
 
@@ -1325,7 +1327,7 @@ export function SeriesManagementConsole({
             </div>
           ) : (
             <div className="py-20 text-center text-sm text-stone-500">
-              繧ｷ繝ｪ繝ｼ繧ｺ繧帝∈謚槭＠縺ｦ縺上□縺輔＞
+              シリーズを選択してください
             </div>
           )}
         </section>

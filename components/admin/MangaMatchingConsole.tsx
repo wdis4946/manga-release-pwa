@@ -2,8 +2,8 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowLeft,
   ArrowRight,
@@ -31,6 +31,12 @@ type IssueResponse = {
 };
 
 type StatusFilter = "unresolved" | "resolved" | "all";
+
+const statusLabels: Record<StatusFilter, string> = {
+  unresolved: "未対応",
+  resolved: "対応済み",
+  all: "すべて",
+};
 
 export function MangaMatchingConsole() {
   const router = useRouter();
@@ -140,13 +146,13 @@ export function MangaMatchingConsole() {
     const supabase = createSupabaseBrowserClient();
 
     void supabase.auth.getSession().then(({ data }) => {
-        if (!data.session) {
-          router.replace("/admin/login");
-          return;
-        }
+      if (!data.session) {
+        router.replace("/admin/login");
+        return;
+      }
 
-        setAccessToken(data.session.access_token);
-      });
+      setAccessToken(data.session.access_token);
+    });
 
     const {
       data: { subscription },
@@ -179,11 +185,16 @@ export function MangaMatchingConsole() {
       return () => window.clearTimeout(timeout);
     }
 
+    let isActive = true;
     const timeout = window.setTimeout(async () => {
       setIsSearching(true);
       const response = await authorizedFetch(
         `/api/admin/matching/series?q=${encodeURIComponent(seriesSearch.trim())}`,
       );
+
+      if (!isActive) {
+        return;
+      }
 
       if (response.ok) {
         const data = (await response.json()) as {
@@ -196,7 +207,10 @@ export function MangaMatchingConsole() {
       setIsSearching(false);
     }, 250);
 
-    return () => window.clearTimeout(timeout);
+    return () => {
+      isActive = false;
+      window.clearTimeout(timeout);
+    };
   }, [accessToken, authorizedFetch, seriesSearch]);
 
   async function linkToSeries(seriesId: string) {
@@ -235,13 +249,14 @@ export function MangaMatchingConsole() {
     }
 
     setIsMutating(true);
+    setError("");
     const response = await authorizedFetch("/api/admin/matching/ignore", {
       method: "POST",
       body: JSON.stringify({ isbns: targetIsbns }),
     });
 
     if (!response.ok) {
-      setError("対応済みに変更できませんでした。");
+      setError("対応不要に更新できませんでした。");
       setIsMutating(false);
       return;
     }
@@ -286,6 +301,7 @@ export function MangaMatchingConsole() {
     }
 
     setIsMutating(true);
+    setError("");
     const createResponse = await authorizedFetch(
       "/api/admin/matching/series",
       {
@@ -373,11 +389,7 @@ export function MangaMatchingConsole() {
                       : "text-stone-500"
                   }`}
                 >
-                  {value === "unresolved"
-                    ? "未対応"
-                    : value === "resolved"
-                      ? "対応済み"
-                      : "すべて"}
+                  {statusLabels[value]}
                 </button>
               ))}
             </div>
@@ -457,30 +469,30 @@ export function MangaMatchingConsole() {
                     onClick={() => setSelectedIsbn(issue.isbn)}
                     className="flex min-w-0 flex-1 gap-3 text-left"
                   >
-                  <div className="relative h-16 w-11 shrink-0 overflow-hidden rounded bg-stone-200">
-                    {issue.coverImageUrl ? (
-                      <Image
-                        src={issue.coverImageUrl}
-                        alt=""
-                        fill
-                        sizes="44px"
-                        className="object-cover"
-                      />
-                    ) : (
-                      <BookOpen className="absolute inset-0 m-auto size-5 text-stone-400" />
-                    )}
-                  </div>
-                  <div className="min-w-0">
-                    <p className="line-clamp-2 text-sm font-semibold text-stone-900">
-                      {issue.title}
-                    </p>
-                    <p className="mt-1 truncate text-xs text-stone-500">
-                      {issue.author || "著者不明"}
-                    </p>
-                    <p className="mt-1 font-mono text-[11px] text-stone-400">
-                      {issue.isbn}
-                    </p>
-                  </div>
+                    <div className="relative h-16 w-11 shrink-0 overflow-hidden rounded bg-stone-200">
+                      {issue.coverImageUrl ? (
+                        <Image
+                          src={issue.coverImageUrl}
+                          alt=""
+                          fill
+                          sizes="44px"
+                          className="object-cover"
+                        />
+                      ) : (
+                        <BookOpen className="absolute inset-0 m-auto size-5 text-stone-400" />
+                      )}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="line-clamp-2 text-sm font-semibold text-stone-900">
+                        {issue.title}
+                      </p>
+                      <p className="mt-1 truncate text-xs text-stone-500">
+                        {issue.author || "著者不明"}
+                      </p>
+                      <p className="mt-1 font-mono text-[11px] text-stone-400">
+                        {issue.isbn}
+                      </p>
+                    </div>
                   </button>
                 </div>
               ))
@@ -594,7 +606,7 @@ export function MangaMatchingConsole() {
             </div>
           ) : (
             <div className="flex h-64 items-center justify-center text-sm text-stone-500">
-              左の一覧からアイテムを選択
+              左の一覧からアイテムを選択してください
             </div>
           )}
         </section>
@@ -703,7 +715,7 @@ export function MangaMatchingConsole() {
               ))}
               {!seriesSearch.trim() ? (
                 <p className="py-8 text-center text-sm text-stone-500">
-                  シリーズ名を入力
+                  シリーズ名を入力してください
                 </p>
               ) : !isSearching && series.length === 0 ? (
                 <p className="py-8 text-center text-sm text-stone-500">
