@@ -104,8 +104,8 @@ begin
     item.isbn,
     item.item_normalized_title,
     item.item_source,
-    similar.series_id,
-    similar.similarity_score,
+    candidate.series_id,
+    candidate.similarity_score,
     'auto_title_similarity'::text as match_method
   from auto_link_items as item
   cross join lateral (
@@ -126,8 +126,8 @@ begin
       item.item_normalized_title,
       series.id
     limit 2
-  ) as similar
-  where similar.similarity_score >= p_similarity_threshold;
+  ) as candidate
+  where candidate.similarity_score >= p_similarity_threshold;
 
   create temporary table auto_link_candidates on commit drop as
   select * from auto_link_exact_candidates

@@ -660,6 +660,11 @@ export function SeriesManagementConsole({
                         <p className="mt-1 font-mono text-[11px] text-stone-400">
                           {item.isbn}
                         </p>
+                        {item.normalizedTitle ? (
+                          <p className="mt-1 break-all font-mono text-[11px] text-cyan-800">
+                            {item.normalizedTitle}
+                          </p>
+                        ) : null}
                         <p className="mt-1 text-[11px] text-stone-400">
                           {item.matchMethod} / {item.salesDate || "発売日未設定"}
                         </p>

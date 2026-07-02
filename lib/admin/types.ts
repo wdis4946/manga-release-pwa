@@ -28,6 +28,7 @@ export type ManagedMangaSeries = MangaSeriesCandidate & {
 export type ManagedSeriesItem = {
   isbn: string;
   title: string;
+  normalizedTitle: string | null;
   author: string | null;
   publisherName: string | null;
   salesDate: string | null;

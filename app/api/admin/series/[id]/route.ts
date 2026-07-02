@@ -45,7 +45,7 @@ export async function GET(request: Request, context: RouteContext) {
       : await supabase
           .from("rakuten_manga_items")
           .select(
-            "isbn, title, author, publisher_name, sales_date, large_image_url, medium_image_url, item_url",
+            "isbn, title, normalized_title, author, publisher_name, sales_date, large_image_url, medium_image_url, item_url",
           )
           .in("isbn", isbns);
 
@@ -53,12 +53,26 @@ export async function GET(request: Request, context: RouteContext) {
     return Response.json({ error: itemsError.message }, { status: 500 });
   }
 
+  const { data: openBdItems, error: openBdItemsError } =
+    isbns.length === 0
+      ? { data: [], error: null }
+      : await supabase
+          .from("openbd_manga_items")
+          .select(
+            "isbn, title, normalized_title, author, publisher, publication_date, cover_url",
+          )
+          .in("isbn", isbns);
+
+  if (openBdItemsError) {
+    return Response.json({ error: openBdItemsError.message }, { status: 500 });
+  }
+
   const { data: madbItems, error: madbItemsError } =
     isbns.length === 0
       ? { data: [], error: null }
       : await supabase
           .from("madb_manga_items")
-          .select("isbn, title, authors, publisher")
+          .select("isbn, title, normalized_title, authors, publisher")
           .in("isbn", isbns);
 
   if (madbItemsError) {
@@ -66,23 +80,39 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   const itemsByIsbn = new Map((items ?? []).map((item) => [item.isbn, item]));
+  const openBdItemsByIsbn = new Map(
+    (openBdItems ?? []).map((item) => [item.isbn, item]),
+  );
   const madbItemsByIsbn = new Map(
     (madbItems ?? []).map((item) => [item.isbn, item]),
   );
   const linkedItems = (links ?? [])
     .map((link) => {
       const item = itemsByIsbn.get(link.isbn);
+      const openBdItem = openBdItemsByIsbn.get(link.isbn);
       const madbItem = madbItemsByIsbn.get(link.isbn);
 
       return {
         isbn: link.isbn,
-        title: item?.title ?? madbItem?.title ?? "タイトル不明",
-        author: item?.author ?? madbItem?.authors ?? null,
+        title:
+          item?.title ??
+          openBdItem?.title ??
+          madbItem?.title ??
+          "タイトル不明",
+        normalizedTitle:
+          item?.normalized_title ??
+          openBdItem?.normalized_title ??
+          madbItem?.normalized_title ??
+          null,
+        author: item?.author ?? openBdItem?.author ?? madbItem?.authors ?? null,
         publisherName:
-          item?.publisher_name ?? madbItem?.publisher ?? null,
-        salesDate: item?.sales_date ?? null,
+          item?.publisher_name ?? openBdItem?.publisher ?? madbItem?.publisher ?? null,
+        salesDate: item?.sales_date ?? openBdItem?.publication_date ?? null,
         coverImageUrl:
-          item?.large_image_url ?? item?.medium_image_url ?? null,
+          item?.large_image_url ??
+          item?.medium_image_url ??
+          openBdItem?.cover_url ??
+          null,
         itemUrl: item?.item_url ?? null,
         matchMethod: link.match_method,
         matchedAt: link.matched_at,
