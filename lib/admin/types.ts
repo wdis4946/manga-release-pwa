@@ -18,8 +18,6 @@ export type MangaSeriesCandidate = {
   id: string;
   searchTitle: string;
   displayTitle: string;
-  categoryNumber: number;
-  categoryName: string;
   similarityScore?: number;
 };
 
@@ -27,8 +25,16 @@ export type ManagedMangaSeries = MangaSeriesCandidate & {
   itemCount: number;
 };
 
+export type ManagedSeriesCategory = {
+  categoryNumber: number;
+  categoryName: string;
+  itemCount: number;
+};
+
 export type ManagedSeriesItem = {
   isbn: string;
+  categoryNumber: number;
+  categoryName: string;
   title: string;
   normalizedTitle: string | null;
   author: string | null;

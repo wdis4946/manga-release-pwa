@@ -18,11 +18,8 @@ export async function GET(request: Request) {
 
   let query = supabase
     .from("manga_series")
-    .select("id, search_title, display_title, category_number, category_name", {
-      count: "exact",
-    })
+    .select("id, search_title, display_title", { count: "exact" })
     .order("display_title", { ascending: true })
-    .order("category_number", { ascending: true })
     .range(from, from + PAGE_SIZE - 1);
 
   if (queryText) {
@@ -63,8 +60,6 @@ export async function GET(request: Request) {
       id: row.id,
       searchTitle: row.search_title,
       displayTitle: row.display_title,
-      categoryNumber: row.category_number,
-      categoryName: row.category_name,
       itemCount: itemCounts.get(row.id) ?? 0,
     })),
     page,

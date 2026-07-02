@@ -9,6 +9,21 @@ type BulkUnlinkRequest = {
   isbns?: string[];
 };
 
+type MoveItemsRequest = {
+  isbns?: string[];
+  categoryNumber?: number;
+};
+
+function parseIsbns(isbns: string[] | undefined) {
+  return Array.from(
+    new Set(
+      (isbns ?? [])
+        .map((isbn) => isbn.trim())
+        .filter((isbn) => isbn.length > 0),
+    ),
+  );
+}
+
 export async function DELETE(request: Request, context: RouteContext) {
   const user = await getAdminUser(request);
 
@@ -18,13 +33,7 @@ export async function DELETE(request: Request, context: RouteContext) {
 
   const { id } = await context.params;
   const body = (await request.json().catch(() => ({}))) as BulkUnlinkRequest;
-  const isbns = Array.from(
-    new Set(
-      (body.isbns ?? [])
-        .map((isbn) => isbn.trim())
-        .filter((isbn) => isbn.length > 0),
-    ),
-  );
+  const isbns = parseIsbns(body.isbns);
 
   if (isbns.length === 0) {
     return Response.json({ error: "No ISBNs were provided." }, { status: 400 });
@@ -66,5 +75,53 @@ export async function DELETE(request: Request, context: RouteContext) {
     requestedCount: isbns.length,
     unlinkedCount,
     missingIsbns,
+  });
+}
+
+export async function PATCH(request: Request, context: RouteContext) {
+  const user = await getAdminUser(request);
+
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await context.params;
+  const body = (await request.json().catch(() => ({}))) as MoveItemsRequest;
+  const isbns = parseIsbns(body.isbns);
+  const categoryNumber = body.categoryNumber;
+
+  if (isbns.length === 0) {
+    return Response.json({ error: "No ISBNs were provided." }, { status: 400 });
+  }
+
+  if (
+    typeof categoryNumber !== "number" ||
+    !Number.isInteger(categoryNumber) ||
+    categoryNumber < 0
+  ) {
+    return Response.json(
+      { error: "Category number must be a non-negative integer." },
+      { status: 400 },
+    );
+  }
+
+  const { data, error } = await createSupabaseAdminClient().rpc(
+    "move_manga_series_items_to_category",
+    {
+      p_series_id: id,
+      p_isbns: isbns,
+      p_category_number: categoryNumber,
+    },
+  );
+
+  if (error) {
+    const status = error.message.includes("not found") ? 404 : 500;
+    return Response.json({ error: error.message }, { status });
+  }
+
+  return Response.json({
+    ok: true,
+    requestedCount: isbns.length,
+    movedCount: data ?? 0,
   });
 }

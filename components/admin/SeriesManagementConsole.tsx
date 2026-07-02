@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -15,12 +15,14 @@ import {
   LoaderCircle,
   LogOut,
   Pencil,
+  Plus,
   RefreshCw,
   Search,
   X,
 } from "lucide-react";
 import type {
   ManagedMangaSeries,
+  ManagedSeriesCategory,
   ManagedSeriesItem,
 } from "@/lib/admin/types";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -34,6 +36,7 @@ type SeriesResponse = {
 
 type SeriesDetailResponse = {
   series: ManagedMangaSeries;
+  categories: ManagedSeriesCategory[];
   items: ManagedSeriesItem[];
 };
 
@@ -46,6 +49,11 @@ type SeriesManagementConsoleProps = {
   initialQuery?: string;
 };
 
+type CategoryDraft = {
+  categoryNumber: string;
+  categoryName: string;
+};
+
 export function SeriesManagementConsole({
   initialQuery = "",
 }: SeriesManagementConsoleProps) {
@@ -55,6 +63,7 @@ export function SeriesManagementConsole({
   const [selectedSeriesId, setSelectedSeriesId] = useState("");
   const [selectedSeries, setSelectedSeries] =
     useState<ManagedMangaSeries | null>(null);
+  const [categories, setCategories] = useState<ManagedSeriesCategory[]>([]);
   const [items, setItems] = useState<ManagedSeriesItem[]>([]);
   const [queryText, setQueryText] = useState(initialQuery);
   const [page, setPage] = useState(1);
@@ -72,9 +81,18 @@ export function SeriesManagementConsole({
   const [isEditingSearchTitle, setIsEditingSearchTitle] = useState(false);
   const [editedSearchTitle, setEditedSearchTitle] = useState("");
   const [isUpdatingSearchTitle, setIsUpdatingSearchTitle] = useState(false);
-  const [editedCategoryNumber, setEditedCategoryNumber] = useState("0");
-  const [editedCategoryName, setEditedCategoryName] = useState("default");
-  const [isUpdatingCategory, setIsUpdatingCategory] = useState(false);
+  const [categoryDrafts, setCategoryDrafts] = useState<
+    Record<string, CategoryDraft>
+  >({});
+  const [newCategoryNumber, setNewCategoryNumber] = useState("1");
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [savingCategoryNumber, setSavingCategoryNumber] = useState<
+    number | null
+  >(null);
+  const [isAddingCategory, setIsAddingCategory] = useState(false);
+  const [movingItemIsbn, setMovingItemIsbn] = useState<string | null>(null);
+  const [bulkMoveCategoryNumber, setBulkMoveCategoryNumber] = useState("0");
+  const [isBulkMoving, setIsBulkMoving] = useState(false);
   const [error, setError] = useState("");
   const seriesRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
@@ -93,6 +111,47 @@ export function SeriesManagementConsole({
   );
   const areAllVisibleItemsSelected =
     items.length > 0 && selectedVisibleItemIsbns.length === items.length;
+  const itemGroups = useMemo(() => {
+    const groups = new Map<
+      number,
+      ManagedSeriesCategory & { items: ManagedSeriesItem[] }
+    >();
+
+    for (const category of categories) {
+      groups.set(category.categoryNumber, {
+        ...category,
+        items: [],
+      });
+    }
+
+    for (const item of items) {
+      const group =
+        groups.get(item.categoryNumber) ??
+        {
+          categoryNumber: item.categoryNumber,
+          categoryName: item.categoryName,
+          itemCount: 0,
+          items: [],
+        };
+
+      group.items.push(item);
+      group.itemCount = group.items.length;
+      groups.set(item.categoryNumber, group);
+    }
+
+    return Array.from(groups.values())
+      .map((group) => ({
+        ...group,
+        items: [...group.items].sort((left, right) =>
+          left.isbn.localeCompare(right.isbn),
+        ),
+      }))
+      .sort(
+        (left, right) =>
+          left.categoryNumber - right.categoryNumber ||
+          left.categoryName.localeCompare(right.categoryName),
+      );
+  }, [categories, items]);
 
   const authorizedFetch = useCallback(
     (input: string, init?: RequestInit) =>
@@ -172,6 +231,7 @@ export function SeriesManagementConsole({
       if (!accessToken || !seriesId) {
         detailRequestIdRef.current += 1;
         setSelectedSeries(null);
+        setCategories([]);
         setItems([]);
         return;
       }
@@ -205,8 +265,26 @@ export function SeriesManagementConsole({
       setSelectedSeries(data.series);
       setEditedTitle(data.series.displayTitle);
       setEditedSearchTitle(data.series.searchTitle);
-      setEditedCategoryNumber(String(data.series.categoryNumber));
-      setEditedCategoryName(data.series.categoryName);
+      setCategories(data.categories);
+      setCategoryDrafts(
+        Object.fromEntries(
+          data.categories.map((category) => [
+            String(category.categoryNumber),
+            {
+              categoryNumber: String(category.categoryNumber),
+              categoryName: category.categoryName,
+            },
+          ]),
+        ),
+      );
+      setBulkMoveCategoryNumber(String(data.categories[0]?.categoryNumber ?? 0));
+      setNewCategoryNumber(
+        String(
+          Math.max(0, ...data.categories.map((category) => category.categoryNumber)) +
+            1,
+        ),
+      );
+      setNewCategoryName("");
       setIsEditingTitle(false);
       setIsEditingSearchTitle(false);
       setItems(data.items);
@@ -407,7 +485,7 @@ export function SeriesManagementConsole({
     if (!response.ok) {
       setError(
         response.status === 409
-          ? "同じタイトルのシリーズがすでに存在します。"
+          ? "同じタイトルのシリーズが既に存在します。"
           : "シリーズタイトルを更新できませんでした。",
       );
       setIsUpdatingTitle(false);
@@ -460,7 +538,7 @@ export function SeriesManagementConsole({
     if (!response.ok) {
       setError(
         response.status === 409
-          ? "同じ検索用タイトルのシリーズがすでに存在します。"
+          ? "同じ検索用タイトルのシリーズが既に存在します。"
           : "検索用タイトルを更新できませんでした。",
       );
       setIsUpdatingSearchTitle(false);
@@ -488,29 +566,47 @@ export function SeriesManagementConsole({
     setIsUpdatingSearchTitle(false);
   }
 
-  async function updateCategory(event: React.FormEvent) {
+  function updateCategoryDraft(
+    originalCategoryNumber: number,
+    patch: Partial<CategoryDraft>,
+  ) {
+    setCategoryDrafts((current) => {
+      const key = String(originalCategoryNumber);
+      return {
+        ...current,
+        [key]: {
+          categoryNumber:
+            current[key]?.categoryNumber ?? String(originalCategoryNumber),
+          categoryName: current[key]?.categoryName ?? "default",
+          ...patch,
+        },
+      };
+    });
+  }
+
+  async function addCategory(event: React.FormEvent) {
     event.preventDefault();
 
-    if (!selectedSeriesId || !editedCategoryName.trim()) {
+    if (!selectedSeriesId || !newCategoryName.trim()) {
       return;
     }
 
-    const categoryNumber = Number(editedCategoryNumber);
+    const categoryNumber = Number(newCategoryNumber);
 
     if (!Number.isInteger(categoryNumber) || categoryNumber < 0) {
       setError("カテゴリ番号は0以上の整数で入力してください。");
       return;
     }
 
-    setIsUpdatingCategory(true);
+    setIsAddingCategory(true);
     setError("");
     const response = await authorizedFetch(
-      `/api/admin/series/${selectedSeriesId}`,
+      `/api/admin/series/${selectedSeriesId}/categories`,
       {
-        method: "PATCH",
+        method: "POST",
         body: JSON.stringify({
           categoryNumber,
-          categoryName: editedCategoryName.trim(),
+          categoryName: newCategoryName.trim(),
         }),
       },
     );
@@ -523,34 +619,130 @@ export function SeriesManagementConsole({
     if (!response.ok) {
       setError(
         response.status === 409
-          ? "同じ検索用タイトルとカテゴリ番号のシリーズが既に存在します。"
-          : "カテゴリを更新できませんでした。",
+          ? "同じカテゴリ番号が既に存在します。"
+          : "カテゴリを追加できませんでした。",
       );
-      setIsUpdatingCategory(false);
+      setIsAddingCategory(false);
       return;
     }
 
-    const data = (await response.json()) as {
-      series: Omit<ManagedMangaSeries, "itemCount">;
-    };
-    const updatedSeries = {
-      ...data.series,
-      itemCount: items.length,
-    };
-
-    setSelectedSeries(updatedSeries);
-    setSeries((current) =>
-      current.map((entry) =>
-        entry.id === updatedSeries.id
-          ? { ...entry, ...updatedSeries }
-          : entry,
-      ),
-    );
-    setEditedCategoryNumber(String(updatedSeries.categoryNumber));
-    setEditedCategoryName(updatedSeries.categoryName);
-    setIsUpdatingCategory(false);
+    await loadSeriesDetail(selectedSeriesId);
+    setIsAddingCategory(false);
   }
 
+  async function saveCategory(category: ManagedSeriesCategory) {
+    if (!selectedSeriesId) {
+      return;
+    }
+
+    const draft = categoryDrafts[String(category.categoryNumber)];
+    const nextCategoryNumber = Number(draft?.categoryNumber);
+    const nextCategoryName = draft?.categoryName.trim();
+
+    if (!Number.isInteger(nextCategoryNumber) || nextCategoryNumber < 0) {
+      setError("カテゴリ番号は0以上の整数で入力してください。");
+      return;
+    }
+
+    if (!nextCategoryName) {
+      setError("カテゴリ名を入力してください。");
+      return;
+    }
+
+    setSavingCategoryNumber(category.categoryNumber);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/categories/${category.categoryNumber}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({
+          categoryNumber: nextCategoryNumber,
+          categoryName: nextCategoryName,
+        }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError(
+        response.status === 409
+          ? "同じカテゴリ番号が既に存在します。"
+          : "カテゴリを保存できませんでした。",
+      );
+      setSavingCategoryNumber(null);
+      return;
+    }
+
+    await loadSeriesDetail(selectedSeriesId);
+    setSavingCategoryNumber(null);
+  }
+
+  async function moveItemsToCategory(isbns: string[], categoryNumber: number) {
+    if (!selectedSeriesId || isbns.length === 0) {
+      return false;
+    }
+
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/items`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ isbns, categoryNumber }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return false;
+    }
+
+    if (!response.ok) {
+      setError("カテゴリを移動できませんでした。");
+      return false;
+    }
+
+    await loadSeriesDetail(selectedSeriesId);
+    return true;
+  }
+
+  async function moveItemToCategory(
+    item: ManagedSeriesItem,
+    categoryNumber: number,
+  ) {
+    if (item.categoryNumber === categoryNumber) {
+      return;
+    }
+
+    setMovingItemIsbn(item.isbn);
+    setError("");
+    await moveItemsToCategory([item.isbn], categoryNumber);
+    setMovingItemIsbn(null);
+  }
+
+  async function bulkMoveSelectedItems() {
+    const categoryNumber = Number(bulkMoveCategoryNumber);
+
+    if (!Number.isInteger(categoryNumber) || categoryNumber < 0) {
+      setError("移動先カテゴリを選択してください。");
+      return;
+    }
+
+    setIsBulkMoving(true);
+    setError("");
+    const moved = await moveItemsToCategory(
+      selectedVisibleItemIsbns.map((item) => item.isbn),
+      categoryNumber,
+    );
+
+    if (moved) {
+      setSelectedItemIsbns(new Set());
+    }
+
+    setIsBulkMoving(false);
+  }
   async function logout() {
     await createSupabaseBrowserClient().auth.signOut();
     router.replace("/admin/login");
@@ -572,7 +764,7 @@ export function SeriesManagementConsole({
               className="flex h-9 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
             >
               <ListChecks className="size-4" />
-              issue管理
+              issue邂｡逅・
             </Link>
             <button
               type="button"
@@ -588,7 +780,7 @@ export function SeriesManagementConsole({
               className="flex h-9 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
             >
               <LogOut className="size-4" />
-              ログアウト
+              繝ｭ繧ｰ繧｢繧ｦ繝・
             </button>
           </div>
         </div>
@@ -609,7 +801,7 @@ export function SeriesManagementConsole({
               <input
                 value={queryText}
                 onChange={(event) => setQueryText(event.target.value)}
-                placeholder="シリーズ名で検索"
+                placeholder="繧ｷ繝ｪ繝ｼ繧ｺ蜷阪〒讀懃ｴ｢"
                 className="h-9 w-full rounded-md border border-stone-300 pl-9 pr-3 text-sm outline-none focus:border-cyan-700"
               />
             </div>
@@ -622,7 +814,7 @@ export function SeriesManagementConsole({
               </div>
             ) : series.length === 0 ? (
               <p className="p-6 text-center text-sm text-stone-500">
-                シリーズがありません
+                繧ｷ繝ｪ繝ｼ繧ｺ縺後≠繧翫∪縺帙ｓ
               </p>
             ) : (
               series.map((entry) => (
@@ -644,16 +836,12 @@ export function SeriesManagementConsole({
                   </p>
                   {entry.searchTitle !== entry.displayTitle ? (
                     <p className="mt-1 truncate text-xs text-stone-500">
-                      検索用: {entry.searchTitle}
+                      讀懃ｴ｢逕ｨ: {entry.searchTitle}
                     </p>
                   ) : null}
-                  <p className="mt-1 text-xs font-semibold text-stone-500">
-                    カテゴリ {entry.categoryNumber}: {entry.categoryName}
-                  </p>
                   <div className="mt-1 flex items-center justify-between gap-3">
                     <span className="shrink-0 text-xs font-semibold text-cyan-800">
-                      {entry.itemCount}冊
-                    </span>
+                      {entry.itemCount}蜀・                    </span>
                   </div>
                 </button>
               ))
@@ -761,7 +949,7 @@ export function SeriesManagementConsole({
                         <input
                           autoFocus
                           value={editedSearchTitle}
-                          aria-label="検索用タイトル"
+                          aria-label="讀懃ｴ｢逕ｨ繧ｿ繧､繝医Ν"
                           onChange={(event) =>
                             setEditedSearchTitle(event.target.value)
                           }
@@ -769,7 +957,7 @@ export function SeriesManagementConsole({
                         />
                         <button
                           type="submit"
-                          title="検索用タイトルを保存"
+                          title="タイトルを編集"
                           disabled={
                             isUpdatingSearchTitle ||
                             !editedSearchTitle.trim() ||
@@ -800,11 +988,11 @@ export function SeriesManagementConsole({
                     ) : (
                       <div className="mt-1 flex items-center gap-2">
                         <p className="text-xs text-stone-500">
-                          検索用タイトル: {currentSeries.searchTitle}
+                          讀懃ｴ｢逕ｨ繧ｿ繧､繝医Ν: {currentSeries.searchTitle}
                         </p>
                         <button
                           type="button"
-                          title="検索用タイトルを編集"
+                          title="タイトルを編集"
                           onClick={() => {
                             setEditedSearchTitle(currentSeries.searchTitle);
                             setIsEditingSearchTitle(true);
@@ -815,60 +1003,9 @@ export function SeriesManagementConsole({
                         </button>
                       </div>
                     )}
-                    <form
-                      onSubmit={(event) => void updateCategory(event)}
-                      className="mt-3 flex flex-wrap items-end gap-2"
-                    >
-                      <label className="flex flex-col gap-1">
-                        <span className="text-[11px] font-semibold text-stone-500">
-                          カテゴリ番号
-                        </span>
-                        <input
-                          type="number"
-                          min={0}
-                          value={editedCategoryNumber}
-                          onChange={(event) =>
-                            setEditedCategoryNumber(event.target.value)
-                          }
-                          className="h-9 w-28 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
-                        />
-                      </label>
-                      <label className="flex min-w-[180px] flex-1 flex-col gap-1">
-                        <span className="text-[11px] font-semibold text-stone-500">
-                          カテゴリ名
-                        </span>
-                        <input
-                          value={editedCategoryName}
-                          onChange={(event) =>
-                            setEditedCategoryName(event.target.value)
-                          }
-                          className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
-                        />
-                      </label>
-                      <button
-                        type="submit"
-                        disabled={
-                          isUpdatingCategory ||
-                          !editedCategoryName.trim() ||
-                          (Number(editedCategoryNumber) ===
-                            currentSeries.categoryNumber &&
-                            editedCategoryName.trim() ===
-                              currentSeries.categoryName)
-                        }
-                        className="flex h-9 items-center gap-2 rounded-md bg-cyan-700 px-3 text-xs font-bold text-white hover:bg-cyan-800 disabled:opacity-40"
-                      >
-                        {isUpdatingCategory ? (
-                          <LoaderCircle className="size-4 animate-spin" />
-                        ) : (
-                          <Check className="size-4" />
-                        )}
-                        カテゴリ保存
-                      </button>
-                    </form>
                   </div>
                   <span className="text-sm font-bold text-cyan-800">
-                    {items.length}冊
-                  </span>
+                    {items.length}蜀・                  </span>
                 </div>
               </div>
 
@@ -889,16 +1026,54 @@ export function SeriesManagementConsole({
                     />
                     表示中を選択
                   </label>
-                  <div className="flex items-center gap-3">
+                  <div className="flex flex-wrap items-center gap-2">
                     <span className="text-xs font-semibold text-stone-500">
                       {selectedVisibleItemIsbns.length}件選択中
                     </span>
+                    <select
+                      value={bulkMoveCategoryNumber}
+                      onChange={(event) =>
+                        setBulkMoveCategoryNumber(event.target.value)
+                      }
+                      disabled={
+                        selectedVisibleItemIsbns.length === 0 || isBulkMoving
+                      }
+                      className="h-8 rounded-md border border-stone-300 bg-white px-2 text-xs font-semibold text-stone-700 disabled:opacity-40"
+                    >
+                      {categories.map((category) => (
+                        <option
+                          key={category.categoryNumber}
+                          value={category.categoryNumber}
+                        >
+                          {category.categoryNumber}: {category.categoryName}
+                        </option>
+                      ))}
+                    </select>
+                    <button
+                      type="button"
+                      disabled={
+                        selectedVisibleItemIsbns.length === 0 ||
+                        isBulkMoving ||
+                        unlinkingIsbn !== null ||
+                        isBulkUnlinking
+                      }
+                      onClick={() => void bulkMoveSelectedItems()}
+                      className="flex h-8 items-center gap-2 rounded-md border border-cyan-300 px-3 text-xs font-bold text-cyan-800 hover:bg-cyan-50 disabled:opacity-40"
+                    >
+                      {isBulkMoving ? (
+                        <LoaderCircle className="size-4 animate-spin" />
+                      ) : (
+                        <ArrowRight className="size-4" />
+                      )}
+                      選択を移動
+                    </button>
                     <button
                       type="button"
                       disabled={
                         selectedVisibleItemIsbns.length === 0 ||
                         unlinkingIsbn !== null ||
-                        isBulkUnlinking
+                        isBulkUnlinking ||
+                        isBulkMoving
                       }
                       onClick={() => void bulkUnlinkItems()}
                       className="flex h-8 items-center gap-2 rounded-md border border-red-300 px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-40"
@@ -919,87 +1094,238 @@ export function SeriesManagementConsole({
                   このシリーズに紐づくアイテムはありません
                 </div>
               ) : (
-                <div className="mt-4 grid gap-3 md:grid-cols-2">
-                  {items.map((item) => (
-                    <article
-                      key={item.isbn}
-                      className="grid min-w-0 grid-cols-[76px_minmax(0,1fr)] gap-3 rounded-md border border-stone-200 bg-white p-3"
+                <div className="mt-4 space-y-6">
+                  <form
+                    onSubmit={(event) => void addCategory(event)}
+                    className="flex flex-wrap items-end gap-2 rounded-md border border-dashed border-stone-300 bg-white px-3 py-3"
+                  >
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[11px] font-semibold text-stone-500">
+                        新規カテゴリ番号
+                      </span>
+                      <input
+                        type="number"
+                        min={0}
+                        value={newCategoryNumber}
+                        onChange={(event) =>
+                          setNewCategoryNumber(event.target.value)
+                        }
+                        className="h-9 w-32 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                      />
+                    </label>
+                    <label className="flex min-w-[180px] flex-1 flex-col gap-1">
+                      <span className="text-[11px] font-semibold text-stone-500">
+                        新規カテゴリ名
+                      </span>
+                      <input
+                        value={newCategoryName}
+                        onChange={(event) =>
+                          setNewCategoryName(event.target.value)
+                        }
+                        placeholder="スピンオフ"
+                        className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                      />
+                    </label>
+                    <button
+                      type="submit"
+                      disabled={isAddingCategory || !newCategoryName.trim()}
+                      className="flex h-9 items-center gap-2 rounded-md bg-stone-900 px-3 text-xs font-bold text-white hover:bg-stone-800 disabled:opacity-40"
                     >
-                      <div className="relative aspect-[2/3] overflow-hidden rounded bg-stone-200">
-                        {item.coverImageUrl ? (
-                          <Image
-                            src={item.coverImageUrl}
-                            alt=""
-                            fill
-                            sizes="76px"
-                            className="object-cover"
-                          />
-                        ) : (
-                          <BookOpen className="absolute inset-0 m-auto size-6 text-stone-400" />
-                        )}
-                      </div>
-                      <div className="flex min-w-0 flex-col">
-                        <div className="flex items-start justify-between gap-2">
-                          <h3 className="min-w-0 text-sm font-bold leading-5 text-stone-900">
-                            {item.title}
-                          </h3>
-                          <input
-                            type="checkbox"
-                            checked={selectedItemIsbns.has(item.isbn)}
-                            onChange={() => toggleItemSelection(item.isbn)}
-                            aria-label={`${item.isbn}を選択`}
-                            className="mt-0.5 size-4 shrink-0 accent-cyan-700"
-                          />
-                        </div>
-                        <p className="mt-1 text-xs text-stone-500">
-                          {item.author || "著者未設定"}
-                        </p>
-                        <p className="mt-1 font-mono text-[11px] text-stone-400">
-                          {item.isbn}
-                        </p>
-                        {item.normalizedTitle ? (
-                          <p className="mt-1 break-all font-mono text-[11px] text-cyan-800">
-                            {item.normalizedTitle}
-                          </p>
-                        ) : null}
-                        <p className="mt-1 text-[11px] text-stone-400">
-                          {item.matchMethod} / {item.salesDate || "発売日未設定"}
-                        </p>
-                        <div className="mt-auto flex gap-2 pt-3">
-                          {item.itemUrl ? (
-                            <a
-                              href={item.itemUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              title="楽天で確認"
-                              className="flex size-8 items-center justify-center rounded-md border border-stone-300 text-stone-600 hover:bg-stone-50"
+                      {isAddingCategory ? (
+                        <LoaderCircle className="size-4 animate-spin" />
+                      ) : (
+                        <Plus className="size-4" />
+                      )}
+                      カテゴリ追加
+                    </button>
+                  </form>
+
+                  {itemGroups.map((group) => {
+                    const draft = categoryDrafts[String(group.categoryNumber)] ?? {
+                      categoryNumber: String(group.categoryNumber),
+                      categoryName: group.categoryName,
+                    };
+
+                    return (
+                      <section
+                        key={group.categoryNumber}
+                        className="border-t-2 border-stone-300 pt-3"
+                      >
+                        <form
+                          onSubmit={(event) => {
+                            event.preventDefault();
+                            void saveCategory(group);
+                          }}
+                          className="mb-3 flex flex-wrap items-end justify-between gap-3"
+                        >
+                          <div className="flex flex-wrap items-end gap-2">
+                            <label className="flex flex-col gap-1">
+                              <span className="text-[11px] font-semibold text-stone-500">
+                                カテゴリ番号
+                              </span>
+                              <input
+                                type="number"
+                                min={0}
+                                value={draft.categoryNumber}
+                                onChange={(event) =>
+                                  updateCategoryDraft(group.categoryNumber, {
+                                    categoryNumber: event.target.value,
+                                  })
+                                }
+                                className="h-9 w-28 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                              />
+                            </label>
+                            <label className="flex min-w-[180px] flex-1 flex-col gap-1">
+                              <span className="text-[11px] font-semibold text-stone-500">
+                                カテゴリ名
+                              </span>
+                              <input
+                                value={draft.categoryName}
+                                onChange={(event) =>
+                                  updateCategoryDraft(group.categoryNumber, {
+                                    categoryName: event.target.value,
+                                  })
+                                }
+                                className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                              />
+                            </label>
+                            <button
+                              type="submit"
+                              disabled={
+                                savingCategoryNumber === group.categoryNumber ||
+                                !draft.categoryName.trim()
+                              }
+                              className="flex h-9 items-center gap-2 rounded-md bg-cyan-700 px-3 text-xs font-bold text-white hover:bg-cyan-800 disabled:opacity-40"
                             >
-                              <ExternalLink className="size-4" />
-                            </a>
-                          ) : null}
-                          <button
-                            type="button"
-                            disabled={unlinkingIsbn !== null || isBulkUnlinking}
-                            onClick={() => void unlinkItem(item)}
-                            className="flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-red-300 px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-40"
-                          >
-                            {unlinkingIsbn === item.isbn ? (
-                              <LoaderCircle className="size-4 animate-spin" />
-                            ) : (
-                              <Link2Off className="size-4" />
-                            )}
-                            紐づけ解除
-                          </button>
-                        </div>
-                      </div>
-                    </article>
-                  ))}
+                              {savingCategoryNumber === group.categoryNumber ? (
+                                <LoaderCircle className="size-4 animate-spin" />
+                              ) : (
+                                <Check className="size-4" />
+                              )}
+                              保存
+                            </button>
+                          </div>
+                          <span className="text-xs font-bold text-stone-500">
+                            {group.items.length}冊
+                          </span>
+                        </form>
+
+                        {group.items.length === 0 ? (
+                          <div className="rounded-md border border-stone-200 bg-white px-4 py-8 text-center text-sm text-stone-500">
+                            このカテゴリにはアイテムがありません
+                          </div>
+                        ) : (
+                          <div className="grid gap-3 md:grid-cols-2">
+                            {group.items.map((item) => (
+                              <article
+                                key={item.isbn}
+                                className="grid min-w-0 grid-cols-[76px_minmax(0,1fr)] gap-3 rounded-md border border-stone-200 bg-white p-3"
+                              >
+                                <div className="relative aspect-[2/3] overflow-hidden rounded bg-stone-200">
+                                  {item.coverImageUrl ? (
+                                    <Image
+                                      src={item.coverImageUrl}
+                                      alt=""
+                                      fill
+                                      sizes="76px"
+                                      className="object-cover"
+                                    />
+                                  ) : (
+                                    <BookOpen className="absolute inset-0 m-auto size-6 text-stone-400" />
+                                  )}
+                                </div>
+                                <div className="flex min-w-0 flex-col">
+                                  <div className="flex items-start justify-between gap-2">
+                                    <h3 className="min-w-0 text-sm font-bold leading-5 text-stone-900">
+                                      {item.title}
+                                    </h3>
+                                    <input
+                                      type="checkbox"
+                                      checked={selectedItemIsbns.has(item.isbn)}
+                                      onChange={() => toggleItemSelection(item.isbn)}
+                                      aria-label={`${item.isbn}を選択`}
+                                      className="mt-0.5 size-4 shrink-0 accent-cyan-700"
+                                    />
+                                  </div>
+                                  <p className="mt-1 text-xs text-stone-500">
+                                    {item.author || "著者未設定"}
+                                  </p>
+                                  <p className="mt-1 font-mono text-[11px] text-stone-400">
+                                    {item.isbn}
+                                  </p>
+                                  {item.normalizedTitle ? (
+                                    <p className="mt-1 break-all font-mono text-[11px] text-cyan-800">
+                                      {item.normalizedTitle}
+                                    </p>
+                                  ) : null}
+                                  <p className="mt-1 text-[11px] text-stone-400">
+                                    {item.matchMethod} / {item.salesDate || "発売日未設定"}
+                                  </p>
+                                  <div className="mt-auto flex flex-wrap gap-2 pt-3">
+                                    <select
+                                      value={item.categoryNumber}
+                                      disabled={movingItemIsbn === item.isbn}
+                                      onChange={(event) =>
+                                        void moveItemToCategory(
+                                          item,
+                                          Number(event.target.value),
+                                        )
+                                      }
+                                      className="h-8 min-w-0 flex-1 rounded-md border border-stone-300 bg-white px-2 text-xs font-semibold text-stone-700 disabled:opacity-40"
+                                    >
+                                      {categories.map((category) => (
+                                        <option
+                                          key={category.categoryNumber}
+                                          value={category.categoryNumber}
+                                        >
+                                          {category.categoryNumber}: {category.categoryName}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    {item.itemUrl ? (
+                                      <a
+                                        href={item.itemUrl}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        title="楽天で確認"
+                                        className="flex size-8 items-center justify-center rounded-md border border-stone-300 text-stone-600 hover:bg-stone-50"
+                                      >
+                                        <ExternalLink className="size-4" />
+                                      </a>
+                                    ) : null}
+                                    <button
+                                      type="button"
+                                      disabled={
+                                        unlinkingIsbn !== null ||
+                                        isBulkUnlinking ||
+                                        movingItemIsbn === item.isbn
+                                      }
+                                      onClick={() => void unlinkItem(item)}
+                                      className="flex h-8 flex-1 items-center justify-center gap-2 rounded-md border border-red-300 px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-40"
+                                    >
+                                      {unlinkingIsbn === item.isbn ||
+                                      movingItemIsbn === item.isbn ? (
+                                        <LoaderCircle className="size-4 animate-spin" />
+                                      ) : (
+                                        <Link2Off className="size-4" />
+                                      )}
+                                      紐づけ解除
+                                    </button>
+                                  </div>
+                                </div>
+                              </article>
+                            ))}
+                          </div>
+                        )}
+                      </section>
+                    );
+                  })}
                 </div>
               )}
             </div>
           ) : (
             <div className="py-20 text-center text-sm text-stone-500">
-              シリーズを選択してください
+              繧ｷ繝ｪ繝ｼ繧ｺ繧帝∈謚槭＠縺ｦ縺上□縺輔＞
             </div>
           )}
         </section>

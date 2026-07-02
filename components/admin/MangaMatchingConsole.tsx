@@ -51,9 +51,6 @@ export function MangaMatchingConsole() {
   const [error, setError] = useState("");
   const [showCreateSeries, setShowCreateSeries] = useState(false);
   const [newSeriesTitle, setNewSeriesTitle] = useState("");
-  const [newSeriesCategoryNumber, setNewSeriesCategoryNumber] = useState("0");
-  const [newSeriesCategoryName, setNewSeriesCategoryName] =
-    useState("default");
   const [selectedIssueIsbns, setSelectedIssueIsbns] = useState<Set<string>>(
     () => new Set(),
   );
@@ -288,23 +285,12 @@ export function MangaMatchingConsole() {
       return;
     }
 
-    const categoryNumber = Number(newSeriesCategoryNumber);
-
-    if (!Number.isInteger(categoryNumber) || categoryNumber < 0) {
-      setError("カテゴリ番号は0以上の整数で入力してください。");
-      return;
-    }
-
     setIsMutating(true);
     const createResponse = await authorizedFetch(
       "/api/admin/matching/series",
       {
         method: "POST",
-        body: JSON.stringify({
-          displayTitle: newSeriesTitle,
-          categoryNumber,
-          categoryName: newSeriesCategoryName.trim() || "default",
-        }),
+        body: JSON.stringify({ displayTitle: newSeriesTitle }),
       },
     );
 
@@ -319,8 +305,6 @@ export function MangaMatchingConsole() {
     };
     setShowCreateSeries(false);
     setNewSeriesTitle("");
-    setNewSeriesCategoryNumber("0");
-    setNewSeriesCategoryName("default");
     await linkToSeries(data.series.id);
   }
 
@@ -623,8 +607,6 @@ export function MangaMatchingConsole() {
               title="新規シリーズ"
               onClick={() => {
                 setNewSeriesTitle(selectedIssue?.normalizedTitle ?? "");
-                setNewSeriesCategoryNumber("0");
-                setNewSeriesCategoryName("default");
                 setShowCreateSeries((current) => !current);
               }}
               className="flex size-8 items-center justify-center rounded-md border border-stone-300 hover:bg-stone-50"
@@ -645,27 +627,6 @@ export function MangaMatchingConsole() {
                 placeholder="新しいシリーズ名"
                 className="h-9 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
               />
-              <div className="grid grid-cols-[110px_minmax(0,1fr)] gap-2">
-                <input
-                  type="number"
-                  min={0}
-                  value={newSeriesCategoryNumber}
-                  onChange={(event) =>
-                    setNewSeriesCategoryNumber(event.target.value)
-                  }
-                  aria-label="カテゴリ番号"
-                  className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
-                />
-                <input
-                  value={newSeriesCategoryName}
-                  onChange={(event) =>
-                    setNewSeriesCategoryName(event.target.value)
-                  }
-                  aria-label="カテゴリ名"
-                  placeholder="カテゴリ名"
-                  className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
-                />
-              </div>
               <button
                 type="submit"
                 disabled={isMutating}
@@ -720,10 +681,6 @@ export function MangaMatchingConsole() {
                       検索用: {candidate.searchTitle}
                     </p>
                   ) : null}
-                  <p className="mt-1 text-xs font-semibold text-stone-500">
-                    カテゴリ {candidate.categoryNumber}:{" "}
-                    {candidate.categoryName}
-                  </p>
                   {candidate.similarityScore !== undefined ? (
                     <p className="mt-1 text-xs font-semibold text-cyan-800">
                       類似度: {candidate.similarityScore.toFixed(3)}
