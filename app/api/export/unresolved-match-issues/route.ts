@@ -5,6 +5,7 @@ export const maxDuration = 180;
 
 const ISSUE_PAGE_SIZE = 1000;
 const ISBN_LOOKUP_SIZE = 200;
+const WIKI_SERIES_PAGE_SIZE = 1000;
 
 type IssueRow = {
   isbn: string;
@@ -16,8 +17,14 @@ type NormalizedTitleRow = {
   normalized_title: string | null;
 };
 
+type WikiSeriesRow = {
+  id: string;
+  items: string | null;
+};
+
 type ExportRow = {
   isbn: string;
+  wikiMangaSeriesIds: string;
   issueNormalizedTitle: string;
   rakutenNormalizedTitle: string;
   openBdNormalizedTitle: string;
@@ -41,6 +48,7 @@ export async function GET(request: Request) {
   try {
     const supabase = createSupabaseAdminClient();
     const rows: ExportRow[] = [];
+    const wikiSeriesIdsByIsbn = await fetchWikiSeriesIdsByIsbn();
     let lastIsbn: string | undefined;
 
     while (true) {
@@ -74,8 +82,12 @@ export async function GET(request: Request) {
       ]);
 
       for (const issue of issueRows) {
+        const normalizedIsbn = normalizeIsbn(issue.isbn);
+
         rows.push({
           isbn: issue.isbn,
+          wikiMangaSeriesIds:
+            wikiSeriesIdsByIsbn.get(normalizedIsbn)?.join("|") ?? "",
           issueNormalizedTitle: issue.normalized_title ?? "",
           rakutenNormalizedTitle: rakutenTitles.get(issue.isbn) ?? "",
           openBdNormalizedTitle: openBdTitles.get(issue.isbn) ?? "",
@@ -97,6 +109,7 @@ export async function GET(request: Request) {
     const csvLines = [
       [
         "isbn",
+        "wiki_manga_series_ids",
         "issue_normalized_title",
         "rakuten_normalized_title",
         "openbd_normalized_title",
@@ -105,6 +118,7 @@ export async function GET(request: Request) {
       ...rows.map((row) =>
         [
           row.isbn,
+          row.wikiMangaSeriesIds,
           row.issueNormalizedTitle,
           row.rakutenNormalizedTitle,
           row.openBdNormalizedTitle,
@@ -135,6 +149,52 @@ export async function GET(request: Request) {
   }
 }
 
+async function fetchWikiSeriesIdsByIsbn(): Promise<Map<string, string[]>> {
+  const supabase = createSupabaseAdminClient();
+  const seriesIdsByIsbn = new Map<string, string[]>();
+  let lastId: string | undefined;
+
+  while (true) {
+    let query = supabase
+      .from("wiki_manga_series")
+      .select("id, items")
+      .order("id")
+      .limit(WIKI_SERIES_PAGE_SIZE);
+
+    if (lastId) {
+      query = query.gt("id", lastId);
+    }
+
+    const { data, error } = await query;
+
+    if (error) {
+      throw error;
+    }
+
+    const rows = (data ?? []) as WikiSeriesRow[];
+
+    for (const row of rows) {
+      for (const isbn of parseItemIsbns(row.items)) {
+        const seriesIds = seriesIdsByIsbn.get(isbn) ?? [];
+        seriesIds.push(row.id);
+        seriesIdsByIsbn.set(isbn, seriesIds);
+      }
+    }
+
+    if (rows.length < WIKI_SERIES_PAGE_SIZE) {
+      break;
+    }
+
+    lastId = rows.at(-1)?.id;
+
+    if (!lastId) {
+      break;
+    }
+  }
+
+  return seriesIdsByIsbn;
+}
+
 async function fetchNormalizedTitles(
   tableName: "rakuten_manga_items" | "openbd_manga_items" | "madb_manga_items",
   isbns: string[],
@@ -159,6 +219,21 @@ async function fetchNormalizedTitles(
   }
 
   return titles;
+}
+
+function parseItemIsbns(items: string | null): string[] {
+  return Array.from(
+    new Set(
+      (items ?? "")
+        .split(/[,\u3001\uff0c]/)
+        .map(normalizeIsbn)
+        .filter((isbn) => isbn.length > 0),
+    ),
+  );
+}
+
+function normalizeIsbn(isbn: string): string {
+  return isbn.trim().replaceAll(/[-\s]/g, "");
 }
 
 function escapeCsvValue(value: string): string {
