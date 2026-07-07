@@ -50,15 +50,30 @@ export async function GET(request: Request, context: RouteContext) {
     return Response.json({ error: categoriesError.message }, { status: 500 });
   }
 
-  const { data: genres, error: genresError } = await supabase
+  const { data: genreLinks, error: genreLinksError } = await supabase
     .from("manga_series_genres")
-    .select("genre_name, sort_order")
+    .select("genre_id")
     .eq("series_id", id)
-    .order("sort_order", { ascending: true })
-    .order("genre_name", { ascending: true });
+    .order("genre_id", { ascending: true });
 
-  if (genresError) {
-    return Response.json({ error: genresError.message }, { status: 500 });
+  if (genreLinksError) {
+    return Response.json({ error: genreLinksError.message }, { status: 500 });
+  }
+
+  const genreIds = (genreLinks ?? []).map((genre) => genre.genre_id);
+  const genreNamesById = new Map<string, string>();
+
+  if (genreIds.length > 0) {
+    const { data: genreRows, error: genreRowsError } = await supabase
+      .from("manga_genres")
+      .select("genre_id, genre_name")
+      .in("genre_id", genreIds);
+
+    if (!genreRowsError) {
+      for (const genre of genreRows ?? []) {
+        genreNamesById.set(genre.genre_id, genre.genre_name);
+      }
+    }
   }
 
   const { data: seriesAgentLinks, error: seriesAgentLinksError } =
@@ -217,9 +232,9 @@ export async function GET(request: Request, context: RouteContext) {
       itemCount: linkedItems.length,
     },
     categories: responseCategories,
-    genres: (genres ?? []).map((genre) => ({
-      genreName: genre.genre_name,
-      sortOrder: genre.sort_order,
+    genres: (genreLinks ?? []).map((genre) => ({
+      genreId: genre.genre_id,
+      genreName: genreNamesById.get(genre.genre_id) ?? null,
     })),
     agents: responseAgents,
     items: linkedItems,

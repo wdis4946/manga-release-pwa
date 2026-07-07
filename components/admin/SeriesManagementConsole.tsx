@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 import type {
   ManagedAgent,
+  ManagedGenre,
   ManagedMangaSeries,
   ManagedSeriesAgent,
   ManagedSeriesCategory,
@@ -56,6 +57,13 @@ type BulkUnlinkResponse = {
 
 type AgentsResponse = {
   agents: ManagedAgent[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
+type GenresResponse = {
+  genres: ManagedGenre[];
   page: number;
   pageSize: number;
   total: number;
@@ -126,9 +134,13 @@ export function SeriesManagementConsole({
   const [reorderingItemIsbn, setReorderingItemIsbn] = useState<string | null>(
     null,
   );
-  const [newGenreName, setNewGenreName] = useState("");
+  const [genreSearchText, setGenreSearchText] = useState("");
+  const [genreSearchResults, setGenreSearchResults] = useState<ManagedGenre[]>(
+    [],
+  );
+  const [isSearchingGenres, setIsSearchingGenres] = useState(false);
   const [isAddingGenre, setIsAddingGenre] = useState(false);
-  const [deletingGenreName, setDeletingGenreName] = useState<string | null>(
+  const [deletingGenreId, setDeletingGenreId] = useState<string | null>(
     null,
   );
   const [error, setError] = useState("");
@@ -333,7 +345,8 @@ export function SeriesManagementConsole({
         ),
       );
       setNewCategoryName("");
-      setNewGenreName("");
+      setGenreSearchText("");
+      setGenreSearchResults([]);
       setAgentSearchText("");
       setAgentSearchResults([]);
       setIsEditingTitle(false);
@@ -373,6 +386,38 @@ export function SeriesManagementConsole({
       const data = (await response.json()) as AgentsResponse;
       setAgentSearchResults(data.agents);
       setIsSearchingAgents(false);
+    },
+    [accessToken, authorizedFetch, handleUnauthorized],
+  );
+
+  const searchGenres = useCallback(
+    async (query: string) => {
+      if (!accessToken || query.trim().length < 1) {
+        setGenreSearchResults([]);
+        return;
+      }
+
+      setIsSearchingGenres(true);
+      const params = new URLSearchParams({
+        q: query.trim(),
+        pageSize: "8",
+      });
+      const response = await authorizedFetch(`/api/admin/genres?${params}`);
+
+      if (response.status === 401) {
+        await handleUnauthorized();
+        return;
+      }
+
+      if (!response.ok) {
+        setError("ジャンル検索に失敗しました。");
+        setIsSearchingGenres(false);
+        return;
+      }
+
+      const data = (await response.json()) as GenresResponse;
+      setGenreSearchResults(data.genres);
+      setIsSearchingGenres(false);
     },
     [accessToken, authorizedFetch, handleUnauthorized],
   );
@@ -428,6 +473,14 @@ export function SeriesManagementConsole({
     );
     return () => window.clearTimeout(timeout);
   }, [agentSearchText, searchAgents]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(
+      () => void searchGenres(genreSearchText),
+      250,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [genreSearchText, searchGenres]);
 
   async function unlinkItem(item: ManagedSeriesItem) {
     if (!selectedSeriesId) {
@@ -1038,10 +1091,8 @@ export function SeriesManagementConsole({
     setUpdatingAgentId(null);
   }
 
-  async function addGenre(event: React.FormEvent) {
-    event.preventDefault();
-
-    if (!selectedSeriesId || !newGenreName.trim()) {
+  async function addGenre(genre: ManagedGenre) {
+    if (!selectedSeriesId) {
       return;
     }
 
@@ -1051,7 +1102,7 @@ export function SeriesManagementConsole({
       `/api/admin/series/${selectedSeriesId}/genres`,
       {
         method: "POST",
-        body: JSON.stringify({ genreName: newGenreName.trim() }),
+        body: JSON.stringify({ genreId: genre.genreId }),
       },
     );
 
@@ -1071,6 +1122,8 @@ export function SeriesManagementConsole({
     }
 
     await loadSeriesDetail(selectedSeriesId);
+    setGenreSearchText("");
+    setGenreSearchResults([]);
     setIsAddingGenre(false);
   }
 
@@ -1079,18 +1132,19 @@ export function SeriesManagementConsole({
       return;
     }
 
+    const genreLabel = genre.genreName ?? genre.genreId;
     const confirmed = window.confirm(
-      `ジャンル「${genre.genreName}」を削除しますか？`,
+      `ジャンル「${genreLabel}」を削除しますか？`,
     );
 
     if (!confirmed) {
       return;
     }
 
-    setDeletingGenreName(genre.genreName);
+    setDeletingGenreId(genre.genreId);
     setError("");
     const response = await authorizedFetch(
-      `/api/admin/series/${selectedSeriesId}/genres/${encodeURIComponent(genre.genreName)}`,
+      `/api/admin/series/${selectedSeriesId}/genres/${encodeURIComponent(genre.genreId)}`,
       { method: "DELETE" },
     );
 
@@ -1101,12 +1155,12 @@ export function SeriesManagementConsole({
 
     if (!response.ok) {
       setError("ジャンルを削除できませんでした。");
-      setDeletingGenreName(null);
+      setDeletingGenreId(null);
       return;
     }
 
     await loadSeriesDetail(selectedSeriesId);
-    setDeletingGenreName(null);
+    setDeletingGenreId(null);
   }
 
   async function moveItemDisplayOrder(
@@ -1620,34 +1674,75 @@ export function SeriesManagementConsole({
                     {genres.length}件
                   </span>
                 </div>
-                <form
-                  onSubmit={(event) => void addGenre(event)}
-                  className="mt-3 flex flex-wrap items-end gap-2"
-                >
-                  <label className="flex min-w-[220px] flex-1 flex-col gap-1">
+                <div className="mt-3">
+                  <label className="flex flex-col gap-1">
                     <span className="text-[11px] font-semibold text-stone-500">
-                      追加するジャンル
+                      追加するジャンル名で検索
                     </span>
-                    <input
-                      value={newGenreName}
-                      onChange={(event) => setNewGenreName(event.target.value)}
-                      placeholder="ファンタジー"
-                      className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
-                    />
+                    <div className="relative">
+                      <Search className="absolute left-3 top-2.5 size-4 text-stone-400" />
+                      <input
+                        value={genreSearchText}
+                        onChange={(event) =>
+                          setGenreSearchText(event.target.value)
+                        }
+                        placeholder="ジャンル名で検索"
+                        className="h-9 w-full rounded-md border border-stone-300 pl-9 pr-3 text-sm outline-none focus:border-cyan-700"
+                      />
+                    </div>
                   </label>
-                  <button
-                    type="submit"
-                    disabled={isAddingGenre || !newGenreName.trim()}
-                    className="flex h-9 items-center gap-2 rounded-md bg-stone-900 px-3 text-xs font-bold text-white hover:bg-stone-800 disabled:opacity-40"
-                  >
-                    {isAddingGenre ? (
+                  {isSearchingGenres ? (
+                    <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-stone-500">
                       <LoaderCircle className="size-4 animate-spin" />
-                    ) : (
-                      <Plus className="size-4" />
-                    )}
-                    ジャンル追加
-                  </button>
-                </form>
+                      検索中...
+                    </p>
+                  ) : null}
+                  {genreSearchText.trim() &&
+                  genreSearchResults.length === 0 &&
+                  !isSearchingGenres ? (
+                    <p className="mt-2 rounded-md bg-stone-50 px-3 py-2 text-xs text-stone-500">
+                      一致するジャンルが見つかりません。
+                    </p>
+                  ) : null}
+                  {genreSearchResults.length > 0 ? (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {genreSearchResults.map((genre) => {
+                        const isLinked = genres.some(
+                          (entry) => entry.genreId === genre.genreId,
+                        );
+
+                        return (
+                          <div
+                            key={genre.genreId}
+                            className="flex items-center justify-between gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-stone-900">
+                                {genre.genreName}
+                              </p>
+                              <p className="truncate font-mono text-[11px] text-stone-500">
+                                {genre.genreId}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={isAddingGenre || isLinked}
+                              onClick={() => void addGenre(genre)}
+                              className="flex h-8 shrink-0 items-center gap-2 rounded-md bg-stone-900 px-3 text-xs font-bold text-white hover:bg-stone-800 disabled:opacity-40"
+                            >
+                              {isAddingGenre ? (
+                                <LoaderCircle className="size-4 animate-spin" />
+                              ) : (
+                                <Plus className="size-4" />
+                              )}
+                              {isLinked ? "追加済み" : "追加"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
                 {genres.length === 0 ? (
                   <p className="mt-3 rounded-md bg-stone-50 px-3 py-4 text-center text-sm text-stone-500">
                     このシリーズにはジャンルが設定されていません
@@ -1656,18 +1751,18 @@ export function SeriesManagementConsole({
                   <div className="mt-3 flex flex-wrap gap-2">
                     {genres.map((genre) => (
                       <span
-                        key={genre.genreName}
+                        key={genre.genreId}
                         className="inline-flex items-center gap-2 rounded-full border border-stone-300 bg-stone-50 px-3 py-1 text-sm font-semibold text-stone-700"
                       >
-                        {genre.genreName}
+                        {genre.genreName ?? genre.genreId}
                         <button
                           type="button"
-                          disabled={deletingGenreName !== null}
+                          disabled={deletingGenreId !== null}
                           onClick={() => void deleteGenre(genre)}
                           className="rounded-full text-red-600 hover:text-red-800 disabled:opacity-40"
-                          aria-label={`${genre.genreName}を削除`}
+                          aria-label={`${genre.genreName ?? genre.genreId}を削除`}
                         >
-                          {deletingGenreName === genre.genreName ? (
+                          {deletingGenreId === genre.genreId ? (
                             <LoaderCircle className="size-3 animate-spin" />
                           ) : (
                             <X className="size-3" />

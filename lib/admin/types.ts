@@ -39,8 +39,14 @@ export type ManagedSeriesAgent = {
 };
 
 export type ManagedSeriesGenre = {
+  genreId: string;
+  genreName: string | null;
+};
+
+export type ManagedGenre = {
+  genreId: string;
   genreName: string;
-  sortOrder: number;
+  normalizedGenreName: string | null;
 };
 
 export type ManagedAgent = {

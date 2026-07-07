@@ -2,7 +2,7 @@ import { getAdminUser } from "@/lib/admin/auth";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 type RouteContext = {
-  params: Promise<{ id: string; genreName: string }>;
+  params: Promise<{ id: string; genreId: string }>;
 };
 
 export async function DELETE(request: Request, context: RouteContext) {
@@ -12,19 +12,19 @@ export async function DELETE(request: Request, context: RouteContext) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const { id, genreName: genreNameParam } = await context.params;
-  const genreName = decodeURIComponent(genreNameParam).trim();
+  const { id, genreId: genreIdParam } = await context.params;
+  const genreId = decodeURIComponent(genreIdParam).trim();
 
-  if (!genreName) {
-    return Response.json({ error: "Genre name is required." }, { status: 400 });
+  if (!genreId) {
+    return Response.json({ error: "Genre ID is required." }, { status: 400 });
   }
 
   const { data, error } = await createSupabaseAdminClient()
     .from("manga_series_genres")
     .delete()
     .eq("series_id", id)
-    .eq("genre_name", genreName)
-    .select("genre_name")
+    .eq("genre_id", genreId)
+    .select("genre_id")
     .maybeSingle();
 
   if (error) {

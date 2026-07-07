@@ -6,7 +6,7 @@ type RouteContext = {
 };
 
 type SeriesGenreRequest = {
-  genreName?: string;
+  genreId?: string;
 };
 
 export async function POST(request: Request, context: RouteContext) {
@@ -18,36 +18,20 @@ export async function POST(request: Request, context: RouteContext) {
 
   const { id } = await context.params;
   const body = (await request.json().catch(() => ({}))) as SeriesGenreRequest;
-  const genreName = body.genreName?.trim();
+  const genreId = body.genreId?.trim();
 
-  if (!genreName) {
-    return Response.json({ error: "Genre name is required." }, { status: 400 });
+  if (!genreId) {
+    return Response.json({ error: "Genre ID is required." }, { status: 400 });
   }
 
   const supabase = createSupabaseAdminClient();
-  const { data: existingGenres, error: existingGenresError } = await supabase
-    .from("manga_series_genres")
-    .select("sort_order")
-    .eq("series_id", id)
-    .order("sort_order", { ascending: false })
-    .limit(1);
-
-  if (existingGenresError) {
-    return Response.json(
-      { error: existingGenresError.message },
-      { status: 500 },
-    );
-  }
-
-  const sortOrder = (existingGenres?.[0]?.sort_order ?? -1) + 1;
   const { data, error } = await supabase
     .from("manga_series_genres")
     .insert({
       series_id: id,
-      genre_name: genreName,
-      sort_order: sortOrder,
+      genre_id: genreId,
     })
-    .select("genre_name, sort_order")
+    .select("genre_id")
     .single();
 
   if (error) {
@@ -57,8 +41,8 @@ export async function POST(request: Request, context: RouteContext) {
 
   return Response.json({
     genre: {
-      genreName: data.genre_name,
-      sortOrder: data.sort_order,
+      genreId: data.genre_id,
+      genreName: null,
     },
   });
 }
