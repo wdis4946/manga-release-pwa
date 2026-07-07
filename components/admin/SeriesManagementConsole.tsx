@@ -72,6 +72,7 @@ export function SeriesManagementConsole({
   const [agents, setAgents] = useState<ManagedSeriesAgent[]>([]);
   const [items, setItems] = useState<ManagedSeriesItem[]>([]);
   const [queryText, setQueryText] = useState(initialQuery);
+  const [excludeEmptySeries, setExcludeEmptySeries] = useState(false);
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -205,6 +206,10 @@ export function SeriesManagementConsole({
       params.set("q", queryText.trim());
     }
 
+    if (excludeEmptySeries) {
+      params.set("excludeEmpty", "true");
+    }
+
     const response = await authorizedFetch(`/api/admin/series?${params}`);
 
     if (response.status === 401) {
@@ -238,6 +243,7 @@ export function SeriesManagementConsole({
   }, [
     accessToken,
     authorizedFetch,
+    excludeEmptySeries,
     handleUnauthorized,
     page,
     queryText,
@@ -344,7 +350,7 @@ export function SeriesManagementConsole({
 
   useEffect(() => {
     seriesRequestIdRef.current += 1;
-  }, [page, queryText]);
+  }, [excludeEmptySeries, page, queryText]);
 
   useEffect(() => {
     detailRequestIdRef.current += 1;
@@ -1115,6 +1121,18 @@ export function SeriesManagementConsole({
                 className="h-9 w-full rounded-md border border-stone-300 pl-9 pr-3 text-sm outline-none focus:border-cyan-700"
               />
             </div>
+            <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-stone-700">
+              <input
+                type="checkbox"
+                checked={excludeEmptySeries}
+                onChange={(event) => {
+                  setPage(1);
+                  setExcludeEmptySeries(event.target.checked);
+                }}
+                className="size-4 accent-cyan-700"
+              />
+              アイテム未紐づきのシリーズを除外
+            </label>
           </form>
 
           <div className="max-h-[60vh] overflow-y-auto xl:max-h-[calc(100vh-227px)]">
