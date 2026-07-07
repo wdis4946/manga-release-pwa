@@ -120,9 +120,17 @@ export async function POST(request: Request, context: RouteContext) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
+  const { data: agent } = await supabase
+    .from("agents")
+    .select("name, author_wiki_link")
+    .eq("id", data.agent_id)
+    .maybeSingle();
+
   return Response.json({
     agent: {
       agentId: data.agent_id,
+      agentName: agent?.name ?? "作者名未設定",
+      authorWikiLink: agent?.author_wiki_link ?? null,
       sortOrder: data.sort_order,
     },
   });

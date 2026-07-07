@@ -33,6 +33,7 @@ export type ManagedSeriesCategory = {
 
 export type ManagedSeriesAgent = {
   agentId: string;
+  agentName: string;
   authorWikiLink: string | null;
   sortOrder: number;
 };

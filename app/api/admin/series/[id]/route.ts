@@ -71,7 +71,7 @@ export async function GET(request: Request, context: RouteContext) {
       ? { data: [], error: null }
       : await supabase
           .from("agents")
-          .select("id, author_wiki_link")
+          .select("id, name, author_wiki_link")
           .in("id", agentIds);
 
   if (agentsError) {
@@ -192,6 +192,7 @@ export async function GET(request: Request, context: RouteContext) {
 
     return {
       agentId: link.agent_id,
+      agentName: agent?.name ?? "作者名未設定",
       authorWikiLink: agent?.author_wiki_link ?? null,
       sortOrder: link.sort_order,
     };

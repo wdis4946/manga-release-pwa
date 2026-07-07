@@ -919,7 +919,7 @@ export function SeriesManagementConsole({
     }
 
     const confirmed = window.confirm(
-      `作者「${agent.authorWikiLink ?? agent.agentId}」をこのシリーズから削除しますか？`,
+      `作者「${agent.agentName}」をこのシリーズから削除しますか？`,
     );
 
     if (!confirmed) {
@@ -1403,11 +1403,16 @@ export function SeriesManagementConsole({
                         <span className="w-8 text-center text-xs font-bold text-stone-500">
                           {index + 1}
                         </span>
-                        <input
-                          name="authorWikiLink"
-                          defaultValue={agent.authorWikiLink ?? ""}
-                          className="h-8 min-w-[220px] flex-1 rounded-md border border-stone-300 bg-white px-2 text-xs outline-none focus:border-cyan-700"
-                        />
+                        <div className="min-w-[180px] flex-1">
+                          <p className="text-sm font-bold text-stone-900">
+                            {agent.agentName}
+                          </p>
+                          <input
+                            name="authorWikiLink"
+                            defaultValue={agent.authorWikiLink ?? ""}
+                            className="mt-1 h-8 w-full rounded-md border border-stone-300 bg-white px-2 text-xs outline-none focus:border-cyan-700"
+                          />
+                        </div>
                         <button
                           type="button"
                           title="上へ"
