@@ -20,7 +20,7 @@ export async function DELETE(request: Request, context: RouteContext) {
   }
 
   const { data, error } = await createSupabaseAdminClient()
-    .from("manga_series_genres")
+    .from("series_genres")
     .delete()
     .eq("series_id", id)
     .eq("genre_id", genreId)

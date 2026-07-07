@@ -41,7 +41,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const { data, error } = await createSupabaseAdminClient()
-    .from("manga_series_categories")
+    .from("series_categories")
     .insert({
       series_id: id,
       category_number: categoryNumber,

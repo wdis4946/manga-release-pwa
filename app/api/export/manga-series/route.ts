@@ -24,7 +24,7 @@ export async function GET(request: Request) {
 
     while (true) {
       let query = supabase
-        .from("manga_series")
+        .from("series")
         .select("*")
         .order("id")
         .limit(PAGE_SIZE);

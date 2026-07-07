@@ -20,13 +20,13 @@ export async function GET(request: Request) {
   const from = (page - 1) * pageSize;
   const supabase = createSupabaseAdminClient();
   let query = supabase
-    .from("manga_genres")
-    .select("genre_id, genre_name, normalized_genre_name", { count: "exact" })
-    .order("genre_name", { ascending: true })
+    .from("genres")
+    .select("id, name", { count: "exact" })
+    .order("name", { ascending: true })
     .range(from, from + pageSize - 1);
 
   if (queryText) {
-    query = query.ilike("genre_name", `%${queryText}%`);
+    query = query.ilike("name", `%${queryText}%`);
   }
 
   const { data, count, error } = await query;
@@ -37,9 +37,8 @@ export async function GET(request: Request) {
 
   return Response.json({
     genres: (data ?? []).map((genre) => ({
-      genreId: genre.genre_id,
-      genreName: genre.genre_name,
-      normalizedGenreName: genre.normalized_genre_name,
+      genreId: genre.id,
+      genreName: genre.name,
     })),
     page,
     pageSize,

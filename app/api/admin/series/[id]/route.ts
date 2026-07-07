@@ -15,7 +15,7 @@ export async function GET(request: Request, context: RouteContext) {
   const { id } = await context.params;
   const supabase = createSupabaseAdminClient();
   const { data: series, error: seriesError } = await supabase
-    .from("manga_series")
+    .from("series")
     .select("id, search_title, display_title")
     .eq("id", id)
     .maybeSingle();
@@ -29,7 +29,7 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   const { data: links, error: linksError } = await supabase
-    .from("manga_series_items")
+    .from("series_items")
     .select("isbn, match_method, matched_at, category_number, display_order")
     .eq("series_id", id)
     .order("category_number", { ascending: true })
@@ -41,7 +41,7 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   const { data: categories, error: categoriesError } = await supabase
-    .from("manga_series_categories")
+    .from("series_categories")
     .select("category_number, category_name")
     .eq("series_id", id)
     .order("category_number", { ascending: true });
@@ -51,7 +51,7 @@ export async function GET(request: Request, context: RouteContext) {
   }
 
   const { data: genreLinks, error: genreLinksError } = await supabase
-    .from("manga_series_genres")
+    .from("series_genres")
     .select("genre_id")
     .eq("series_id", id)
     .order("genre_id", { ascending: true });
@@ -65,20 +65,20 @@ export async function GET(request: Request, context: RouteContext) {
 
   if (genreIds.length > 0) {
     const { data: genreRows, error: genreRowsError } = await supabase
-      .from("manga_genres")
-      .select("genre_id, genre_name")
-      .in("genre_id", genreIds);
+      .from("genres")
+      .select("id, name")
+      .in("id", genreIds);
 
     if (!genreRowsError) {
       for (const genre of genreRows ?? []) {
-        genreNamesById.set(genre.genre_id, genre.genre_name);
+        genreNamesById.set(genre.id, genre.name);
       }
     }
   }
 
   const { data: seriesAgentLinks, error: seriesAgentLinksError } =
     await supabase
-      .from("manga_series_agents")
+      .from("series_agents")
       .select("agent_id, sort_order")
       .eq("series_id", id)
       .order("sort_order", { ascending: true })
@@ -294,7 +294,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
-    .from("manga_series")
+    .from("series")
     .update(updates)
     .eq("id", id)
     .select("id, search_title, display_title")
@@ -323,7 +323,7 @@ export async function DELETE(request: Request, context: RouteContext) {
 
   const { id } = await context.params;
   const { error } = await createSupabaseAdminClient()
-    .from("manga_series")
+    .from("series")
     .delete()
     .eq("id", id);
 

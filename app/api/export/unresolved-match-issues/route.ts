@@ -53,7 +53,7 @@ export async function GET(request: Request) {
 
     while (true) {
       let issueQuery = supabase
-        .from("manga_series_item_match_issues")
+        .from("series_item_match_issues")
         .select("isbn, normalized_title")
         .eq("is_resolved", false)
         .order("isbn")

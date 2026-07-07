@@ -26,7 +26,7 @@ export async function GET(request: Request) {
   const supabase = createSupabaseAdminClient();
 
   if (excludeEmpty) {
-    const { data, error } = await supabase.rpc("list_admin_manga_series", {
+    const { data, error } = await supabase.rpc("list_admin_series", {
       p_query_text: queryText || null,
       p_exclude_empty: true,
       p_limit: PAGE_SIZE,
@@ -56,7 +56,7 @@ export async function GET(request: Request) {
   }
 
   let query = supabase
-    .from("manga_series")
+    .from("series")
     .select("id, search_title, display_title", { count: "exact" })
     .order("display_title", { ascending: true })
     .range(from, from + PAGE_SIZE - 1);
@@ -77,7 +77,7 @@ export async function GET(request: Request) {
     seriesIds.length === 0
       ? { data: [], error: null }
       : await supabase
-          .from("manga_series_items")
+          .from("series_items")
           .select("series_id")
           .in("series_id", seriesIds);
 

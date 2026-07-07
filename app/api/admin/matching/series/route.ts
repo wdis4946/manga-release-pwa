@@ -24,18 +24,18 @@ export async function GET(request: Request) {
   const supabase = createSupabaseAdminClient();
   const [displayResult, searchResult, similarResult] = await Promise.all([
     supabase
-      .from("manga_series")
+      .from("series")
       .select("id, search_title, display_title")
       .ilike("display_title", `%${queryText}%`)
       .order("display_title")
       .limit(25),
     supabase
-      .from("manga_series")
+      .from("series")
       .select("id, search_title, display_title")
       .ilike("search_title", `%${queryText}%`)
       .order("display_title")
       .limit(25),
-    supabase.rpc("find_similar_manga_series", {
+    supabase.rpc("find_similar_series", {
       p_normalized_title: queryText,
       p_limit: 3,
     }),
@@ -103,7 +103,7 @@ export async function POST(request: Request) {
   }
 
   const { data, error } = await createSupabaseAdminClient()
-    .from("manga_series")
+    .from("series")
     .insert({
       search_title: searchTitle,
       display_title: displayTitle,

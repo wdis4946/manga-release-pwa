@@ -31,7 +31,7 @@ export async function POST(request: Request) {
 
   const supabase = createSupabaseAdminClient();
   const { data: series, error: seriesError } = await supabase
-    .from("manga_series")
+    .from("series")
     .select("id")
     .eq("id", body.seriesId)
     .maybeSingle();
@@ -44,7 +44,7 @@ export async function POST(request: Request) {
 
   if (body.applyToGroup && selectedIsbns.length === 1) {
     const { data: issue, error: issueError } = await supabase
-      .from("manga_series_item_match_issues")
+      .from("series_item_match_issues")
       .select("normalized_title")
       .eq("isbn", selectedIsbns[0])
       .single();
@@ -54,7 +54,7 @@ export async function POST(request: Request) {
     }
 
     const { data: groupIssues, error: groupError } = await supabase
-      .from("manga_series_item_match_issues")
+      .from("series_item_match_issues")
       .select("isbn")
       .eq("normalized_title", issue.normalized_title)
       .eq("is_resolved", false);

@@ -18,7 +18,7 @@ export async function GET(request: Request) {
   const supabase = createSupabaseAdminClient();
 
   let query = supabase
-    .from("manga_series_item_match_issues")
+    .from("series_item_match_issues")
     .select(
       "isbn, normalized_title, issue_type, candidate_count, candidate_series_ids, is_resolved, detected_at",
       { count: "exact" },

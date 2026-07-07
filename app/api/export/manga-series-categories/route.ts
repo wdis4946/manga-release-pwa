@@ -26,7 +26,7 @@ export async function GET(request: Request) {
 
     while (true) {
       const { data, error } = await supabase
-        .from("manga_series_categories")
+        .from("series_categories")
         .select("*")
         .order("series_id")
         .order("category_number")

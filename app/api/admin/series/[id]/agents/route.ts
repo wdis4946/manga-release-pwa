@@ -87,7 +87,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   if (sortOrder === undefined) {
     const { data: existingLinks, error: existingLinksError } = await supabase
-      .from("manga_series_agents")
+      .from("series_agents")
       .select("sort_order")
       .eq("series_id", id)
       .order("sort_order", { ascending: false })
@@ -104,7 +104,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const { data, error } = await supabase
-    .from("manga_series_agents")
+    .from("series_agents")
     .upsert(
       {
         series_id: id,
@@ -175,7 +175,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   for (const agent of agentOrders) {
     const { error } = await supabase
-      .from("manga_series_agents")
+      .from("series_agents")
       .update({ sort_order: agent.sortOrder })
       .eq("series_id", id)
       .eq("agent_id", agent.agentId);

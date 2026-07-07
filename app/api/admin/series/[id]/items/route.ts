@@ -122,7 +122,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     }
 
     const { data, error } = await createSupabaseAdminClient().rpc(
-      "update_manga_series_item_display_orders",
+      "update_series_item_display_orders",
       {
         p_series_id: id,
         p_item_orders: itemOrders,
@@ -160,7 +160,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const { data, error } = await createSupabaseAdminClient().rpc(
-    "move_manga_series_items_to_category",
+    "move_series_items_to_category",
     {
       p_series_id: id,
       p_isbns: isbns,

@@ -47,7 +47,7 @@ export async function enrichUnmatchedTitles(request: Request) {
     : DEFAULT_BATCH_SIZE;
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
-    .from("manga_series_item_match_issues")
+    .from("series_item_match_issues")
     .select("isbn")
     .eq("issue_type", "unmatched")
     .eq("is_resolved", false)
@@ -281,7 +281,7 @@ async function linkExactSeries(
   book: SourceBook,
 ): Promise<LinkResult> {
   const { data: candidates, error } = await supabase
-    .from("manga_series")
+    .from("series")
     .select("id")
     .eq("search_title", book.normalizedTitle)
     .limit(2);
@@ -294,7 +294,7 @@ async function linkExactSeries(
 
   if (candidates?.length === 1) {
     const { error: linkError } = await supabase
-      .from("manga_series_items")
+      .from("series_items")
       .upsert(
         {
           isbn,
@@ -312,7 +312,7 @@ async function linkExactSeries(
     }
 
     const { error: deleteError } = await supabase
-      .from("manga_series_item_match_issues")
+      .from("series_item_match_issues")
       .delete()
       .eq("isbn", isbn);
 
@@ -352,7 +352,7 @@ async function updateIssue(
   values: Record<string, unknown>,
 ) {
   const { error } = await supabase
-    .from("manga_series_item_match_issues")
+    .from("series_item_match_issues")
     .update({ ...values, updated_at: new Date().toISOString() })
     .eq("isbn", isbn);
 

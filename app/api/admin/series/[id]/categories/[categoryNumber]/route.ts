@@ -44,7 +44,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const { data, error } = await createSupabaseAdminClient().rpc(
-    "update_manga_series_category",
+    "update_series_category",
     {
       p_series_id: id,
       p_category_number: currentCategoryNumber,
@@ -89,7 +89,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
 
   const supabase = createSupabaseAdminClient();
   const { count, error: countError } = await supabase
-    .from("manga_series_items")
+    .from("series_items")
     .select("isbn", { count: "exact", head: true })
     .eq("series_id", id)
     .eq("category_number", categoryNumber);
@@ -106,7 +106,7 @@ export async function DELETE(_request: Request, context: RouteContext) {
   }
 
   const { data, error } = await supabase
-    .from("manga_series_categories")
+    .from("series_categories")
     .delete()
     .eq("series_id", id)
     .eq("category_number", categoryNumber)

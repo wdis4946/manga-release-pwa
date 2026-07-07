@@ -9,7 +9,7 @@ export async function GET() {
   try {
     const supabase = createSupabaseServerClient();
     const { data, error } = await supabase
-      .from("manga_series")
+      .from("series")
       .select("id")
       .limit(1)
       .maybeSingle();

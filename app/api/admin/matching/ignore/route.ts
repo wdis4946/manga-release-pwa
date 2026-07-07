@@ -27,7 +27,7 @@ export async function POST(request: Request) {
 
   const now = new Date().toISOString();
   const { error } = await createSupabaseAdminClient()
-    .from("manga_series_item_match_issues")
+    .from("series_item_match_issues")
     .update({
       is_resolved: true,
       resolved_by: user.id,

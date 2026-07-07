@@ -46,7 +46,6 @@ export type ManagedSeriesGenre = {
 export type ManagedGenre = {
   genreId: string;
   genreName: string;
-  normalizedGenreName: string | null;
 };
 
 export type ManagedAgent = {

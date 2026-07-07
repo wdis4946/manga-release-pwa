@@ -26,7 +26,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
-    .from("manga_series_genres")
+    .from("series_genres")
     .insert({
       series_id: id,
       genre_id: genreId,

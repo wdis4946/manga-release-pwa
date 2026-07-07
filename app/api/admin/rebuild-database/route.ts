@@ -62,86 +62,19 @@ export async function POST(request: Request) {
   let stage = "read-migration";
 
   try {
-    const migrationSql = (
-      await Promise.all([
-        readFile(
-          path.join(
-            process.cwd(),
-            "supabase/migrations/20260629020000_create_initial_schema.sql",
-          ),
-          "utf8",
-        ),
-        readFile(
-          path.join(
-            process.cwd(),
-            "supabase/migrations/20260629030000_rename_madb_series_titles.sql",
-          ),
-          "utf8",
-        ),
-        readFile(
-          path.join(
-            process.cwd(),
-            "supabase/migrations/20260630010000_merge_rakuten_manga_item_details.sql",
-          ),
-          "utf8",
-        ),
-        readFile(
-          path.join(
-            process.cwd(),
-            "supabase/migrations/20260630020000_create_madb_manga_series.sql",
-          ),
-          "utf8",
-        ),
-        readFile(
-          path.join(
-            process.cwd(),
-            "supabase/migrations/20260630030000_create_wiki_manga_series.sql",
-          ),
-          "utf8",
-        ),
-        readFile(
-          path.join(
-            process.cwd(),
-            "supabase/migrations/20260630040000_rebuild_manga_series_for_search.sql",
-          ),
-          "utf8",
-        ),
-        readFile(
-          path.join(
-            process.cwd(),
-            "supabase/migrations/20260701010000_create_madb_manga_items.sql",
-          ),
-          "utf8",
-        ),
-        readFile(
-          path.join(
-            process.cwd(),
-            "supabase/migrations/20260701030000_link_wiki_manga_items.sql",
-          ),
-          "utf8",
-        ),
-        readFile(
-          path.join(
-            process.cwd(),
-            "supabase/migrations/20260701040000_add_series_levenshtein_search.sql",
-          ),
-          "utf8",
-        ),
-        readFile(
-          path.join(
-            process.cwd(),
-            "supabase/migrations/20260701050000_replace_levenshtein_with_trgm.sql",
-          ),
-          "utf8",
-        ),
-      ])
-    ).join("\n\n");
+    const migrationSql = await readFile(
+      path.join(
+        process.cwd(),
+        "supabase/migrations/20260707000000_init_current_schema.sql",
+      ),
+      "utf8",
+    );
 
     stage = "connect";
     await client.connect();
     stage = "verify-backup-count";
     const countResult = await client.query<{ count: string }>(
-      "select count(*)::text as count from public.manga_series",
+      "select count(*)::text as count from public.series",
     );
     const actualSeriesCount = Number(countResult.rows[0]?.count);
 
@@ -169,7 +102,7 @@ export async function POST(request: Request) {
       search_title_count: string;
     }>(`
       select
-        (select count(*)::text from public.manga_series) as series_count,
+        (select count(*)::text from public.series) as series_count,
         (
           select count(*)::text
           from public.rakuten_import_genres
@@ -179,7 +112,7 @@ export async function POST(request: Request) {
           select count(*)::text
           from information_schema.columns
           where table_schema = 'public'
-            and table_name = 'manga_series'
+            and table_name = 'series'
             and column_name = 'search_title'
         ) as search_title_count
     `);

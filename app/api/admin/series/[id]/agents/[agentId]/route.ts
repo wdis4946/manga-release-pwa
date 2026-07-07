@@ -79,7 +79,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const { data: currentLink, error: currentLinkError } = await supabase
-    .from("manga_series_agents")
+    .from("series_agents")
     .select("agent_id, sort_order")
     .eq("series_id", id)
     .eq("agent_id", currentAgentId)
@@ -98,7 +98,7 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   if (nextAgentId === currentAgentId) {
     const { data, error } = await supabase
-      .from("manga_series_agents")
+      .from("series_agents")
       .update({ sort_order: nextSortOrder })
       .eq("series_id", id)
       .eq("agent_id", currentAgentId)
@@ -126,7 +126,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const { error: deleteError } = await supabase
-    .from("manga_series_agents")
+    .from("series_agents")
     .delete()
     .eq("series_id", id)
     .eq("agent_id", currentAgentId);
@@ -136,7 +136,7 @@ export async function PATCH(request: Request, context: RouteContext) {
   }
 
   const { data, error } = await supabase
-    .from("manga_series_agents")
+    .from("series_agents")
     .upsert(
       {
         series_id: id,
@@ -178,7 +178,7 @@ export async function DELETE(request: Request, context: RouteContext) {
   const { id, agentId: agentIdParam } = await context.params;
   const agentId = decodeURIComponent(agentIdParam);
   const { data, error } = await createSupabaseAdminClient()
-    .from("manga_series_agents")
+    .from("series_agents")
     .delete()
     .eq("series_id", id)
     .eq("agent_id", agentId)
