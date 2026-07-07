@@ -50,6 +50,17 @@ export async function GET(request: Request, context: RouteContext) {
     return Response.json({ error: categoriesError.message }, { status: 500 });
   }
 
+  const { data: genres, error: genresError } = await supabase
+    .from("manga_series_genres")
+    .select("genre_name, sort_order")
+    .eq("series_id", id)
+    .order("sort_order", { ascending: true })
+    .order("genre_name", { ascending: true });
+
+  if (genresError) {
+    return Response.json({ error: genresError.message }, { status: 500 });
+  }
+
   const { data: seriesAgentLinks, error: seriesAgentLinksError } =
     await supabase
       .from("manga_series_agents")
@@ -206,6 +217,10 @@ export async function GET(request: Request, context: RouteContext) {
       itemCount: linkedItems.length,
     },
     categories: responseCategories,
+    genres: (genres ?? []).map((genre) => ({
+      genreName: genre.genre_name,
+      sortOrder: genre.sort_order,
+    })),
     agents: responseAgents,
     items: linkedItems,
   });

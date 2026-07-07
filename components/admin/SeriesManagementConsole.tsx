@@ -29,6 +29,7 @@ import type {
   ManagedMangaSeries,
   ManagedSeriesAgent,
   ManagedSeriesCategory,
+  ManagedSeriesGenre,
   ManagedSeriesItem,
 } from "@/lib/admin/types";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
@@ -43,6 +44,7 @@ type SeriesResponse = {
 type SeriesDetailResponse = {
   series: ManagedMangaSeries;
   categories: ManagedSeriesCategory[];
+  genres: ManagedSeriesGenre[];
   agents: ManagedSeriesAgent[];
   items: ManagedSeriesItem[];
 };
@@ -78,6 +80,7 @@ export function SeriesManagementConsole({
   const [selectedSeries, setSelectedSeries] =
     useState<ManagedMangaSeries | null>(null);
   const [categories, setCategories] = useState<ManagedSeriesCategory[]>([]);
+  const [genres, setGenres] = useState<ManagedSeriesGenre[]>([]);
   const [agents, setAgents] = useState<ManagedSeriesAgent[]>([]);
   const [items, setItems] = useState<ManagedSeriesItem[]>([]);
   const [queryText, setQueryText] = useState(initialQuery);
@@ -121,6 +124,11 @@ export function SeriesManagementConsole({
   const [isAddingAgent, setIsAddingAgent] = useState(false);
   const [updatingAgentId, setUpdatingAgentId] = useState<string | null>(null);
   const [reorderingItemIsbn, setReorderingItemIsbn] = useState<string | null>(
+    null,
+  );
+  const [newGenreName, setNewGenreName] = useState("");
+  const [isAddingGenre, setIsAddingGenre] = useState(false);
+  const [deletingGenreName, setDeletingGenreName] = useState<string | null>(
     null,
   );
   const [error, setError] = useState("");
@@ -268,6 +276,7 @@ export function SeriesManagementConsole({
         detailRequestIdRef.current += 1;
         setSelectedSeries(null);
         setCategories([]);
+        setGenres([]);
         setAgents([]);
         setItems([]);
         return;
@@ -303,6 +312,7 @@ export function SeriesManagementConsole({
       setEditedTitle(data.series.displayTitle);
       setEditedSearchTitle(data.series.searchTitle);
       setCategories(data.categories);
+      setGenres(data.genres);
       setAgents(data.agents);
       setCategoryDrafts(
         Object.fromEntries(
@@ -323,6 +333,7 @@ export function SeriesManagementConsole({
         ),
       );
       setNewCategoryName("");
+      setNewGenreName("");
       setAgentSearchText("");
       setAgentSearchResults([]);
       setIsEditingTitle(false);
@@ -939,40 +950,6 @@ export function SeriesManagementConsole({
     setIsAddingAgent(false);
   }
 
-  async function replaceAgent(agent: ManagedSeriesAgent, authorWikiLink: string) {
-    if (!selectedSeriesId || !authorWikiLink.trim()) {
-      return;
-    }
-
-    setUpdatingAgentId(agent.agentId);
-    setError("");
-    const response = await authorizedFetch(
-      `/api/admin/series/${selectedSeriesId}/agents/${encodeURIComponent(agent.agentId)}`,
-      {
-        method: "PATCH",
-        body: JSON.stringify({ authorWikiLink: authorWikiLink.trim() }),
-      },
-    );
-
-    if (response.status === 401) {
-      await handleUnauthorized();
-      return;
-    }
-
-    if (!response.ok) {
-      setError(
-        response.status === 404
-          ? "一致する作者Wiki URLの作者がagentsに見つかりませんでした。"
-          : "作者を変更できませんでした。",
-      );
-      setUpdatingAgentId(null);
-      return;
-    }
-
-    await loadSeriesDetail(selectedSeriesId);
-    setUpdatingAgentId(null);
-  }
-
   async function deleteAgent(agent: ManagedSeriesAgent) {
     if (!selectedSeriesId) {
       return;
@@ -1059,6 +1036,77 @@ export function SeriesManagementConsole({
     }
 
     setUpdatingAgentId(null);
+  }
+
+  async function addGenre(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!selectedSeriesId || !newGenreName.trim()) {
+      return;
+    }
+
+    setIsAddingGenre(true);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/genres`,
+      {
+        method: "POST",
+        body: JSON.stringify({ genreName: newGenreName.trim() }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError(
+        response.status === 409
+          ? "同じジャンルが既に追加されています。"
+          : "ジャンルを追加できませんでした。",
+      );
+      setIsAddingGenre(false);
+      return;
+    }
+
+    await loadSeriesDetail(selectedSeriesId);
+    setIsAddingGenre(false);
+  }
+
+  async function deleteGenre(genre: ManagedSeriesGenre) {
+    if (!selectedSeriesId) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `ジャンル「${genre.genreName}」を削除しますか？`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingGenreName(genre.genreName);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/genres/${encodeURIComponent(genre.genreName)}`,
+      { method: "DELETE" },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError("ジャンルを削除できませんでした。");
+      setDeletingGenreName(null);
+      return;
+    }
+
+    await loadSeriesDetail(selectedSeriesId);
+    setDeletingGenreName(null);
   }
 
   async function moveItemDisplayOrder(
@@ -1506,16 +1554,8 @@ export function SeriesManagementConsole({
                 ) : (
                   <div className="mt-3 space-y-2">
                     {agents.map((agent, index) => (
-                      <form
+                      <div
                         key={agent.agentId}
-                        onSubmit={(event) => {
-                          event.preventDefault();
-                          const formData = new FormData(event.currentTarget);
-                          void replaceAgent(
-                            agent,
-                            String(formData.get("authorWikiLink") ?? ""),
-                          );
-                        }}
                         className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 p-2"
                       >
                         <span className="w-8 text-center text-xs font-bold text-stone-500">
@@ -1525,11 +1565,15 @@ export function SeriesManagementConsole({
                           <p className="text-sm font-bold text-stone-900">
                             {agent.agentName}
                           </p>
-                          <input
-                            name="authorWikiLink"
-                            defaultValue={agent.authorWikiLink ?? ""}
-                            className="mt-1 h-8 w-full rounded-md border border-stone-300 bg-white px-2 text-xs outline-none focus:border-cyan-700"
-                          />
+                          {agent.authorWikiLink ? (
+                            <p className="mt-1 break-all text-[11px] text-stone-500">
+                              {agent.authorWikiLink}
+                            </p>
+                          ) : (
+                            <p className="mt-1 text-[11px] text-stone-400">
+                              Wiki URL未設定
+                            </p>
+                          )}
                         </div>
                         <button
                           type="button"
@@ -1553,18 +1597,6 @@ export function SeriesManagementConsole({
                           <ArrowDown className="size-4" />
                         </button>
                         <button
-                          type="submit"
-                          disabled={updatingAgentId !== null}
-                          className="flex h-8 items-center gap-2 rounded-md border border-cyan-300 bg-white px-3 text-xs font-bold text-cyan-800 hover:bg-cyan-50 disabled:opacity-40"
-                        >
-                          {updatingAgentId === agent.agentId ? (
-                            <LoaderCircle className="size-4 animate-spin" />
-                          ) : (
-                            <Check className="size-4" />
-                          )}
-                          変更
-                        </button>
-                        <button
                           type="button"
                           disabled={updatingAgentId !== null}
                           onClick={() => void deleteAgent(agent)}
@@ -1573,7 +1605,75 @@ export function SeriesManagementConsole({
                           <Trash2 className="size-4" />
                           削除
                         </button>
-                      </form>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="mt-4 rounded-md border border-stone-200 bg-white p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-stone-900">
+                    ジャンル
+                  </h3>
+                  <span className="text-xs font-semibold text-stone-500">
+                    {genres.length}件
+                  </span>
+                </div>
+                <form
+                  onSubmit={(event) => void addGenre(event)}
+                  className="mt-3 flex flex-wrap items-end gap-2"
+                >
+                  <label className="flex min-w-[220px] flex-1 flex-col gap-1">
+                    <span className="text-[11px] font-semibold text-stone-500">
+                      追加するジャンル
+                    </span>
+                    <input
+                      value={newGenreName}
+                      onChange={(event) => setNewGenreName(event.target.value)}
+                      placeholder="ファンタジー"
+                      className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={isAddingGenre || !newGenreName.trim()}
+                    className="flex h-9 items-center gap-2 rounded-md bg-stone-900 px-3 text-xs font-bold text-white hover:bg-stone-800 disabled:opacity-40"
+                  >
+                    {isAddingGenre ? (
+                      <LoaderCircle className="size-4 animate-spin" />
+                    ) : (
+                      <Plus className="size-4" />
+                    )}
+                    ジャンル追加
+                  </button>
+                </form>
+                {genres.length === 0 ? (
+                  <p className="mt-3 rounded-md bg-stone-50 px-3 py-4 text-center text-sm text-stone-500">
+                    このシリーズにはジャンルが設定されていません
+                  </p>
+                ) : (
+                  <div className="mt-3 flex flex-wrap gap-2">
+                    {genres.map((genre) => (
+                      <span
+                        key={genre.genreName}
+                        className="inline-flex items-center gap-2 rounded-full border border-stone-300 bg-stone-50 px-3 py-1 text-sm font-semibold text-stone-700"
+                      >
+                        {genre.genreName}
+                        <button
+                          type="button"
+                          disabled={deletingGenreName !== null}
+                          onClick={() => void deleteGenre(genre)}
+                          className="rounded-full text-red-600 hover:text-red-800 disabled:opacity-40"
+                          aria-label={`${genre.genreName}を削除`}
+                        >
+                          {deletingGenreName === genre.genreName ? (
+                            <LoaderCircle className="size-3 animate-spin" />
+                          ) : (
+                            <X className="size-3" />
+                          )}
+                        </button>
+                      </span>
                     ))}
                   </div>
                 )}

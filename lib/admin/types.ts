@@ -38,6 +38,11 @@ export type ManagedSeriesAgent = {
   sortOrder: number;
 };
 
+export type ManagedSeriesGenre = {
+  genreName: string;
+  sortOrder: number;
+};
+
 export type ManagedAgent = {
   id: string;
   name: string;
