@@ -6,7 +6,9 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowLeft,
+  ArrowDown,
   ArrowRight,
+  ArrowUp,
   BookOpen,
   Check,
   ExternalLink,
@@ -23,6 +25,7 @@ import {
 } from "lucide-react";
 import type {
   ManagedMangaSeries,
+  ManagedSeriesAgent,
   ManagedSeriesCategory,
   ManagedSeriesItem,
 } from "@/lib/admin/types";
@@ -38,6 +41,7 @@ type SeriesResponse = {
 type SeriesDetailResponse = {
   series: ManagedMangaSeries;
   categories: ManagedSeriesCategory[];
+  agents: ManagedSeriesAgent[];
   items: ManagedSeriesItem[];
 };
 
@@ -65,6 +69,7 @@ export function SeriesManagementConsole({
   const [selectedSeries, setSelectedSeries] =
     useState<ManagedMangaSeries | null>(null);
   const [categories, setCategories] = useState<ManagedSeriesCategory[]>([]);
+  const [agents, setAgents] = useState<ManagedSeriesAgent[]>([]);
   const [items, setItems] = useState<ManagedSeriesItem[]>([]);
   const [queryText, setQueryText] = useState(initialQuery);
   const [page, setPage] = useState(1);
@@ -98,6 +103,12 @@ export function SeriesManagementConsole({
   const [deletingCategoryNumber, setDeletingCategoryNumber] = useState<
     number | null
   >(null);
+  const [newAgentWikiLink, setNewAgentWikiLink] = useState("");
+  const [isAddingAgent, setIsAddingAgent] = useState(false);
+  const [updatingAgentId, setUpdatingAgentId] = useState<string | null>(null);
+  const [reorderingItemIsbn, setReorderingItemIsbn] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState("");
   const seriesRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
@@ -148,6 +159,7 @@ export function SeriesManagementConsole({
       .map((group) => ({
         ...group,
         items: [...group.items].sort((left, right) =>
+          left.displayOrder - right.displayOrder ||
           left.isbn.localeCompare(right.isbn),
         ),
       }))
@@ -237,6 +249,7 @@ export function SeriesManagementConsole({
         detailRequestIdRef.current += 1;
         setSelectedSeries(null);
         setCategories([]);
+        setAgents([]);
         setItems([]);
         return;
       }
@@ -271,6 +284,7 @@ export function SeriesManagementConsole({
       setEditedTitle(data.series.displayTitle);
       setEditedSearchTitle(data.series.searchTitle);
       setCategories(data.categories);
+      setAgents(data.agents);
       setCategoryDrafts(
         Object.fromEntries(
           data.categories.map((category) => [
@@ -290,6 +304,7 @@ export function SeriesManagementConsole({
         ),
       );
       setNewCategoryName("");
+      setNewAgentWikiLink("");
       setIsEditingTitle(false);
       setIsEditingSearchTitle(false);
       setItems(data.items);
@@ -828,6 +843,216 @@ export function SeriesManagementConsole({
     setDeletingCategoryNumber(null);
   }
 
+  async function addAgent(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!selectedSeriesId || !newAgentWikiLink.trim()) {
+      return;
+    }
+
+    setIsAddingAgent(true);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/agents`,
+      {
+        method: "POST",
+        body: JSON.stringify({ authorWikiLink: newAgentWikiLink.trim() }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError(
+        response.status === 404
+          ? "一致する作者Wiki URLの作者がagentsに見つかりませんでした。"
+          : "作者を追加できませんでした。",
+      );
+      setIsAddingAgent(false);
+      return;
+    }
+
+    await loadSeriesDetail(selectedSeriesId);
+    setIsAddingAgent(false);
+  }
+
+  async function replaceAgent(agent: ManagedSeriesAgent, authorWikiLink: string) {
+    if (!selectedSeriesId || !authorWikiLink.trim()) {
+      return;
+    }
+
+    setUpdatingAgentId(agent.agentId);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/agents/${encodeURIComponent(agent.agentId)}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ authorWikiLink: authorWikiLink.trim() }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError(
+        response.status === 404
+          ? "一致する作者Wiki URLの作者がagentsに見つかりませんでした。"
+          : "作者を変更できませんでした。",
+      );
+      setUpdatingAgentId(null);
+      return;
+    }
+
+    await loadSeriesDetail(selectedSeriesId);
+    setUpdatingAgentId(null);
+  }
+
+  async function deleteAgent(agent: ManagedSeriesAgent) {
+    if (!selectedSeriesId) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `作者「${agent.authorWikiLink ?? agent.agentId}」をこのシリーズから削除しますか？`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setUpdatingAgentId(agent.agentId);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/agents/${encodeURIComponent(agent.agentId)}`,
+      { method: "DELETE" },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError("作者を削除できませんでした。");
+      setUpdatingAgentId(null);
+      return;
+    }
+
+    await loadSeriesDetail(selectedSeriesId);
+    setUpdatingAgentId(null);
+  }
+
+  async function moveAgent(agent: ManagedSeriesAgent, direction: -1 | 1) {
+    if (!selectedSeriesId) {
+      return;
+    }
+
+    const currentIndex = agents.findIndex(
+      (entry) => entry.agentId === agent.agentId,
+    );
+    const nextIndex = currentIndex + direction;
+
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= agents.length) {
+      return;
+    }
+
+    const nextAgents = [...agents];
+    const [movedAgent] = nextAgents.splice(currentIndex, 1);
+    nextAgents.splice(nextIndex, 0, movedAgent);
+    const agentOrders = nextAgents.map((entry, index) => ({
+      agentId: entry.agentId,
+      sortOrder: index,
+    }));
+
+    setAgents(
+      nextAgents.map((entry, index) => ({
+        ...entry,
+        sortOrder: index,
+      })),
+    );
+    setUpdatingAgentId(agent.agentId);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/agents`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ agents: agentOrders }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError("作者の表示順を変更できませんでした。");
+      await loadSeriesDetail(selectedSeriesId);
+      setUpdatingAgentId(null);
+      return;
+    }
+
+    setUpdatingAgentId(null);
+  }
+
+  async function moveItemDisplayOrder(
+    groupItems: ManagedSeriesItem[],
+    item: ManagedSeriesItem,
+    direction: -1 | 1,
+  ) {
+    if (!selectedSeriesId) {
+      return;
+    }
+
+    const currentIndex = groupItems.findIndex(
+      (entry) => entry.isbn === item.isbn,
+    );
+    const nextIndex = currentIndex + direction;
+
+    if (currentIndex < 0 || nextIndex < 0 || nextIndex >= groupItems.length) {
+      return;
+    }
+
+    const nextItems = [...groupItems];
+    const [movedItem] = nextItems.splice(currentIndex, 1);
+    nextItems.splice(nextIndex, 0, movedItem);
+    const itemOrders = nextItems.map((entry, index) => ({
+      isbn: entry.isbn,
+      categoryNumber: entry.categoryNumber,
+      displayOrder: index,
+    }));
+
+    setReorderingItemIsbn(item.isbn);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/items`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ itemOrders }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError("アイテムの表示順を変更できませんでした。");
+      setReorderingItemIsbn(null);
+      return;
+    }
+
+    await loadSeriesDetail(selectedSeriesId);
+    setReorderingItemIsbn(null);
+  }
+
   async function logout() {
     await createSupabaseBrowserClient().auth.signOut();
     router.replace("/admin/login");
@@ -1117,6 +1342,120 @@ export function SeriesManagementConsole({
                 </p>
               ) : null}
 
+              <section className="mt-4 rounded-md border border-stone-200 bg-white p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-stone-900">
+                    作者
+                  </h3>
+                  <span className="text-xs font-semibold text-stone-500">
+                    {agents.length}人
+                  </span>
+                </div>
+                <form
+                  onSubmit={(event) => void addAgent(event)}
+                  className="mt-3 flex flex-wrap items-end gap-2"
+                >
+                  <label className="flex min-w-[240px] flex-1 flex-col gap-1">
+                    <span className="text-[11px] font-semibold text-stone-500">
+                      追加する作者Wiki URL
+                    </span>
+                    <input
+                      value={newAgentWikiLink}
+                      onChange={(event) =>
+                        setNewAgentWikiLink(event.target.value)
+                      }
+                      placeholder="https://ja.wikipedia.org/wiki/..."
+                      className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={isAddingAgent || !newAgentWikiLink.trim()}
+                    className="flex h-9 items-center gap-2 rounded-md bg-stone-900 px-3 text-xs font-bold text-white hover:bg-stone-800 disabled:opacity-40"
+                  >
+                    {isAddingAgent ? (
+                      <LoaderCircle className="size-4 animate-spin" />
+                    ) : (
+                      <Plus className="size-4" />
+                    )}
+                    作者追加
+                  </button>
+                </form>
+                {agents.length === 0 ? (
+                  <p className="mt-3 rounded-md bg-stone-50 px-3 py-4 text-center text-sm text-stone-500">
+                    このシリーズには作者が紐づいていません
+                  </p>
+                ) : (
+                  <div className="mt-3 space-y-2">
+                    {agents.map((agent, index) => (
+                      <form
+                        key={agent.agentId}
+                        onSubmit={(event) => {
+                          event.preventDefault();
+                          const formData = new FormData(event.currentTarget);
+                          void replaceAgent(
+                            agent,
+                            String(formData.get("authorWikiLink") ?? ""),
+                          );
+                        }}
+                        className="flex flex-wrap items-center gap-2 rounded-md border border-stone-200 bg-stone-50 p-2"
+                      >
+                        <span className="w-8 text-center text-xs font-bold text-stone-500">
+                          {index + 1}
+                        </span>
+                        <input
+                          name="authorWikiLink"
+                          defaultValue={agent.authorWikiLink ?? ""}
+                          className="h-8 min-w-[220px] flex-1 rounded-md border border-stone-300 bg-white px-2 text-xs outline-none focus:border-cyan-700"
+                        />
+                        <button
+                          type="button"
+                          title="上へ"
+                          disabled={index === 0 || updatingAgentId !== null}
+                          onClick={() => void moveAgent(agent, -1)}
+                          className="flex size-8 items-center justify-center rounded-md border border-stone-300 bg-white text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+                        >
+                          <ArrowUp className="size-4" />
+                        </button>
+                        <button
+                          type="button"
+                          title="下へ"
+                          disabled={
+                            index === agents.length - 1 ||
+                            updatingAgentId !== null
+                          }
+                          onClick={() => void moveAgent(agent, 1)}
+                          className="flex size-8 items-center justify-center rounded-md border border-stone-300 bg-white text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+                        >
+                          <ArrowDown className="size-4" />
+                        </button>
+                        <button
+                          type="submit"
+                          disabled={updatingAgentId !== null}
+                          className="flex h-8 items-center gap-2 rounded-md border border-cyan-300 bg-white px-3 text-xs font-bold text-cyan-800 hover:bg-cyan-50 disabled:opacity-40"
+                        >
+                          {updatingAgentId === agent.agentId ? (
+                            <LoaderCircle className="size-4 animate-spin" />
+                          ) : (
+                            <Check className="size-4" />
+                          )}
+                          変更
+                        </button>
+                        <button
+                          type="button"
+                          disabled={updatingAgentId !== null}
+                          onClick={() => void deleteAgent(agent)}
+                          className="flex h-8 items-center gap-2 rounded-md border border-red-300 bg-white px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-40"
+                        >
+                          <Trash2 className="size-4" />
+                          削除
+                        </button>
+                      </form>
+                    ))}
+                  </div>
+                )}
+              </section>
+
               {items.length > 0 ? (
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-stone-200 bg-white px-3 py-2">
                   <label className="flex items-center gap-2 text-sm font-semibold text-stone-700">
@@ -1334,7 +1673,7 @@ export function SeriesManagementConsole({
                           </div>
                         ) : (
                           <div className="grid gap-3 md:grid-cols-2">
-                            {group.items.map((item) => (
+                            {group.items.map((item, itemIndex) => (
                               <article
                                 key={item.isbn}
                                 className="grid min-w-0 grid-cols-[76px_minmax(0,1fr)] gap-3 rounded-md border border-stone-200 bg-white p-3"
@@ -1377,9 +1716,55 @@ export function SeriesManagementConsole({
                                     </p>
                                   ) : null}
                                   <p className="mt-1 text-[11px] text-stone-400">
-                                    {item.matchMethod} / {item.salesDate || "発売日未設定"}
+                                    表示順 {item.displayOrder} /{" "}
+                                    {item.matchMethod} /{" "}
+                                    {item.salesDate || "発売日未設定"}
                                   </p>
                                   <div className="mt-auto flex flex-wrap gap-2 pt-3">
+                                    <button
+                                      type="button"
+                                      title="表示順を上へ"
+                                      disabled={
+                                        itemIndex === 0 ||
+                                        reorderingItemIsbn !== null
+                                      }
+                                      onClick={() =>
+                                        void moveItemDisplayOrder(
+                                          group.items,
+                                          item,
+                                          -1,
+                                        )
+                                      }
+                                      className="flex size-8 items-center justify-center rounded-md border border-stone-300 text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+                                    >
+                                      {reorderingItemIsbn === item.isbn ? (
+                                        <LoaderCircle className="size-4 animate-spin" />
+                                      ) : (
+                                        <ArrowUp className="size-4" />
+                                      )}
+                                    </button>
+                                    <button
+                                      type="button"
+                                      title="表示順を下へ"
+                                      disabled={
+                                        itemIndex === group.items.length - 1 ||
+                                        reorderingItemIsbn !== null
+                                      }
+                                      onClick={() =>
+                                        void moveItemDisplayOrder(
+                                          group.items,
+                                          item,
+                                          1,
+                                        )
+                                      }
+                                      className="flex size-8 items-center justify-center rounded-md border border-stone-300 text-stone-600 hover:bg-stone-50 disabled:opacity-40"
+                                    >
+                                      {reorderingItemIsbn === item.isbn ? (
+                                        <LoaderCircle className="size-4 animate-spin" />
+                                      ) : (
+                                        <ArrowDown className="size-4" />
+                                      )}
+                                    </button>
                                     <select
                                       value={item.categoryNumber}
                                       disabled={movingItemIsbn === item.isbn}

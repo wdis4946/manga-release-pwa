@@ -12,6 +12,11 @@ type BulkUnlinkRequest = {
 type MoveItemsRequest = {
   isbns?: string[];
   categoryNumber?: number;
+  itemOrders?: Array<{
+    isbn?: string;
+    categoryNumber?: number;
+    displayOrder?: number;
+  }>;
 };
 
 function parseIsbns(isbns: string[] | undefined) {
@@ -87,6 +92,55 @@ export async function PATCH(request: Request, context: RouteContext) {
 
   const { id } = await context.params;
   const body = (await request.json().catch(() => ({}))) as MoveItemsRequest;
+  const itemOrders = (body.itemOrders ?? [])
+    .map((item) => ({
+      isbn: item.isbn?.trim() ?? "",
+      categoryNumber: item.categoryNumber,
+      displayOrder: item.displayOrder,
+    }))
+    .filter((item) => item.isbn.length > 0);
+
+  if (itemOrders.length > 0) {
+    if (
+      itemOrders.some(
+        (item) =>
+          typeof item.categoryNumber !== "number" ||
+          !Number.isInteger(item.categoryNumber) ||
+          item.categoryNumber < 0 ||
+          typeof item.displayOrder !== "number" ||
+          !Number.isInteger(item.displayOrder) ||
+          item.displayOrder < 0,
+      )
+    ) {
+      return Response.json(
+        {
+          error:
+            "Each item order must include a non-negative category number and display order.",
+        },
+        { status: 400 },
+      );
+    }
+
+    const { data, error } = await createSupabaseAdminClient().rpc(
+      "update_manga_series_item_display_orders",
+      {
+        p_series_id: id,
+        p_item_orders: itemOrders,
+      },
+    );
+
+    if (error) {
+      const status = error.message.includes("not found") ? 404 : 500;
+      return Response.json({ error: error.message }, { status });
+    }
+
+    return Response.json({
+      ok: true,
+      requestedCount: itemOrders.length,
+      updatedCount: data ?? 0,
+    });
+  }
+
   const isbns = parseIsbns(body.isbns);
   const categoryNumber = body.categoryNumber;
 

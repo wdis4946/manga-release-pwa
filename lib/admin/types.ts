@@ -31,10 +31,17 @@ export type ManagedSeriesCategory = {
   itemCount: number;
 };
 
+export type ManagedSeriesAgent = {
+  agentId: string;
+  authorWikiLink: string | null;
+  sortOrder: number;
+};
+
 export type ManagedSeriesItem = {
   isbn: string;
   categoryNumber: number;
   categoryName: string;
+  displayOrder: number;
   title: string;
   normalizedTitle: string | null;
   author: string | null;

@@ -30,9 +30,10 @@ export async function GET(request: Request, context: RouteContext) {
 
   const { data: links, error: linksError } = await supabase
     .from("manga_series_items")
-    .select("isbn, match_method, matched_at, category_number")
+    .select("isbn, match_method, matched_at, category_number, display_order")
     .eq("series_id", id)
     .order("category_number", { ascending: true })
+    .order("display_order", { ascending: true })
     .order("isbn", { ascending: true });
 
   if (linksError) {
@@ -47,6 +48,34 @@ export async function GET(request: Request, context: RouteContext) {
 
   if (categoriesError) {
     return Response.json({ error: categoriesError.message }, { status: 500 });
+  }
+
+  const { data: seriesAgentLinks, error: seriesAgentLinksError } =
+    await supabase
+      .from("manga_series_agents")
+      .select("agent_id, sort_order")
+      .eq("series_id", id)
+      .order("sort_order", { ascending: true })
+      .order("agent_id", { ascending: true });
+
+  if (seriesAgentLinksError) {
+    return Response.json(
+      { error: seriesAgentLinksError.message },
+      { status: 500 },
+    );
+  }
+
+  const agentIds = (seriesAgentLinks ?? []).map((link) => link.agent_id);
+  const { data: agents, error: agentsError } =
+    agentIds.length === 0
+      ? { data: [], error: null }
+      : await supabase
+          .from("agents")
+          .select("id, author_wiki_link")
+          .in("id", agentIds);
+
+  if (agentsError) {
+    return Response.json({ error: agentsError.message }, { status: 500 });
   }
 
   const isbns = (links ?? []).map((link) => link.isbn);
@@ -97,6 +126,7 @@ export async function GET(request: Request, context: RouteContext) {
   const madbItemsByIsbn = new Map(
     (madbItems ?? []).map((item) => [item.isbn, item]),
   );
+  const agentsById = new Map((agents ?? []).map((agent) => [agent.id, agent]));
   const itemCountsByCategory = new Map<number, number>();
   for (const link of links ?? []) {
     itemCountsByCategory.set(
@@ -126,6 +156,7 @@ export async function GET(request: Request, context: RouteContext) {
         categoryNumber: link.category_number,
         categoryName:
           categoryNamesByNumber.get(link.category_number) ?? "default",
+        displayOrder: link.display_order,
         title:
           item?.title ??
           openBdItem?.title ??
@@ -150,7 +181,21 @@ export async function GET(request: Request, context: RouteContext) {
         matchedAt: link.matched_at,
       };
     })
-    .sort((left, right) => left.isbn.localeCompare(right.isbn));
+    .sort(
+      (left, right) =>
+        left.categoryNumber - right.categoryNumber ||
+        left.displayOrder - right.displayOrder ||
+        left.isbn.localeCompare(right.isbn),
+    );
+  const responseAgents = (seriesAgentLinks ?? []).map((link) => {
+    const agent = agentsById.get(link.agent_id);
+
+    return {
+      agentId: link.agent_id,
+      authorWikiLink: agent?.author_wiki_link ?? null,
+      sortOrder: link.sort_order,
+    };
+  });
 
   return Response.json({
     series: {
@@ -160,6 +205,7 @@ export async function GET(request: Request, context: RouteContext) {
       itemCount: linkedItems.length,
     },
     categories: responseCategories,
+    agents: responseAgents,
     items: linkedItems,
   });
 }
