@@ -21,9 +21,11 @@ import {
   RefreshCw,
   Search,
   Trash2,
+  UserRound,
   X,
 } from "lucide-react";
 import type {
+  ManagedAgent,
   ManagedMangaSeries,
   ManagedSeriesAgent,
   ManagedSeriesCategory,
@@ -48,6 +50,13 @@ type SeriesDetailResponse = {
 type BulkUnlinkResponse = {
   unlinkedCount?: number;
   missingIsbns?: string[];
+};
+
+type AgentsResponse = {
+  agents: ManagedAgent[];
+  page: number;
+  pageSize: number;
+  total: number;
 };
 
 type SeriesManagementConsoleProps = {
@@ -104,7 +113,11 @@ export function SeriesManagementConsole({
   const [deletingCategoryNumber, setDeletingCategoryNumber] = useState<
     number | null
   >(null);
-  const [newAgentWikiLink, setNewAgentWikiLink] = useState("");
+  const [agentSearchText, setAgentSearchText] = useState("");
+  const [agentSearchResults, setAgentSearchResults] = useState<ManagedAgent[]>(
+    [],
+  );
+  const [isSearchingAgents, setIsSearchingAgents] = useState(false);
   const [isAddingAgent, setIsAddingAgent] = useState(false);
   const [updatingAgentId, setUpdatingAgentId] = useState<string | null>(null);
   const [reorderingItemIsbn, setReorderingItemIsbn] = useState<string | null>(
@@ -310,12 +323,45 @@ export function SeriesManagementConsole({
         ),
       );
       setNewCategoryName("");
-      setNewAgentWikiLink("");
+      setAgentSearchText("");
+      setAgentSearchResults([]);
       setIsEditingTitle(false);
       setIsEditingSearchTitle(false);
       setItems(data.items);
       setSelectedItemIsbns(new Set());
       setIsDetailLoading(false);
+    },
+    [accessToken, authorizedFetch, handleUnauthorized],
+  );
+
+  const searchAgents = useCallback(
+    async (query: string) => {
+      if (!accessToken || query.trim().length < 1) {
+        setAgentSearchResults([]);
+        return;
+      }
+
+      setIsSearchingAgents(true);
+      const params = new URLSearchParams({
+        q: query.trim(),
+        pageSize: "8",
+      });
+      const response = await authorizedFetch(`/api/admin/agents?${params}`);
+
+      if (response.status === 401) {
+        await handleUnauthorized();
+        return;
+      }
+
+      if (!response.ok) {
+        setError("作者検索に失敗しました。");
+        setIsSearchingAgents(false);
+        return;
+      }
+
+      const data = (await response.json()) as AgentsResponse;
+      setAgentSearchResults(data.agents);
+      setIsSearchingAgents(false);
     },
     [accessToken, authorizedFetch, handleUnauthorized],
   );
@@ -363,6 +409,14 @@ export function SeriesManagementConsole({
     );
     return () => window.clearTimeout(timeout);
   }, [loadSeriesDetail, selectedSeriesId]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(
+      () => void searchAgents(agentSearchText),
+      250,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [agentSearchText, searchAgents]);
 
   async function unlinkItem(item: ManagedSeriesItem) {
     if (!selectedSeriesId) {
@@ -849,10 +903,8 @@ export function SeriesManagementConsole({
     setDeletingCategoryNumber(null);
   }
 
-  async function addAgent(event: React.FormEvent) {
-    event.preventDefault();
-
-    if (!selectedSeriesId || !newAgentWikiLink.trim()) {
+  async function addAgent(agent: ManagedAgent) {
+    if (!selectedSeriesId) {
       return;
     }
 
@@ -862,7 +914,7 @@ export function SeriesManagementConsole({
       `/api/admin/series/${selectedSeriesId}/agents`,
       {
         method: "POST",
-        body: JSON.stringify({ authorWikiLink: newAgentWikiLink.trim() }),
+        body: JSON.stringify({ agentId: agent.id }),
       },
     );
 
@@ -874,7 +926,7 @@ export function SeriesManagementConsole({
     if (!response.ok) {
       setError(
         response.status === 404
-          ? "一致する作者Wiki URLの作者がagentsに見つかりませんでした。"
+          ? "作者が見つかりませんでした。"
           : "作者を追加できませんでした。",
       );
       setIsAddingAgent(false);
@@ -882,6 +934,8 @@ export function SeriesManagementConsole({
     }
 
     await loadSeriesDetail(selectedSeriesId);
+    setAgentSearchText("");
+    setAgentSearchResults([]);
     setIsAddingAgent(false);
   }
 
@@ -1081,6 +1135,13 @@ export function SeriesManagementConsole({
             >
               <ListChecks className="size-4" />
               紐づけ管理
+            </Link>
+            <Link
+              href="/admin/agents"
+              className="flex h-9 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+            >
+              <UserRound className="size-4" />
+              作者管理
             </Link>
             <button
               type="button"
@@ -1369,36 +1430,75 @@ export function SeriesManagementConsole({
                     {agents.length}人
                   </span>
                 </div>
-                <form
-                  onSubmit={(event) => void addAgent(event)}
-                  className="mt-3 flex flex-wrap items-end gap-2"
-                >
-                  <label className="flex min-w-[240px] flex-1 flex-col gap-1">
+                <div className="mt-3">
+                  <label className="flex flex-col gap-1">
                     <span className="text-[11px] font-semibold text-stone-500">
-                      追加する作者Wiki URL
+                      追加する作者名で検索
                     </span>
-                    <input
-                      value={newAgentWikiLink}
-                      onChange={(event) =>
-                        setNewAgentWikiLink(event.target.value)
-                      }
-                      placeholder="https://ja.wikipedia.org/wiki/..."
-                      className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
-                    />
+                    <div className="relative">
+                      <Search className="absolute left-3 top-2.5 size-4 text-stone-400" />
+                      <input
+                        value={agentSearchText}
+                        onChange={(event) =>
+                          setAgentSearchText(event.target.value)
+                        }
+                        placeholder="作者名で検索"
+                        className="h-9 w-full rounded-md border border-stone-300 pl-9 pr-3 text-sm outline-none focus:border-cyan-700"
+                      />
+                    </div>
                   </label>
-                  <button
-                    type="submit"
-                    disabled={isAddingAgent || !newAgentWikiLink.trim()}
-                    className="flex h-9 items-center gap-2 rounded-md bg-stone-900 px-3 text-xs font-bold text-white hover:bg-stone-800 disabled:opacity-40"
-                  >
-                    {isAddingAgent ? (
+                  {isSearchingAgents ? (
+                    <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-stone-500">
                       <LoaderCircle className="size-4 animate-spin" />
-                    ) : (
-                      <Plus className="size-4" />
-                    )}
-                    作者追加
-                  </button>
-                </form>
+                      検索中...
+                    </p>
+                  ) : null}
+                  {agentSearchText.trim() && agentSearchResults.length === 0 && !isSearchingAgents ? (
+                    <p className="mt-2 rounded-md bg-stone-50 px-3 py-2 text-xs text-stone-500">
+                      一致する作者が見つかりません。必要なら作者編集画面で新規追加してください。
+                    </p>
+                  ) : null}
+                  {agentSearchResults.length > 0 ? (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {agentSearchResults.map((agent) => {
+                        const isLinked = agents.some(
+                          (entry) => entry.agentId === agent.id,
+                        );
+
+                        return (
+                          <div
+                            key={agent.id}
+                            className="flex items-center justify-between gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-stone-900">
+                                {agent.name}
+                              </p>
+                              {agent.authorWikiLink ? (
+                                <p className="truncate text-[11px] text-stone-500">
+                                  {agent.authorWikiLink}
+                                </p>
+                              ) : null}
+                            </div>
+                            <button
+                              type="button"
+                              disabled={isAddingAgent || isLinked}
+                              onClick={() => void addAgent(agent)}
+                              className="flex h-8 shrink-0 items-center gap-2 rounded-md bg-stone-900 px-3 text-xs font-bold text-white hover:bg-stone-800 disabled:opacity-40"
+                            >
+                              {isAddingAgent ? (
+                                <LoaderCircle className="size-4 animate-spin" />
+                              ) : (
+                                <Plus className="size-4" />
+                              )}
+                              {isLinked ? "追加済み" : "追加"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
                 {agents.length === 0 ? (
                   <p className="mt-3 rounded-md bg-stone-50 px-3 py-4 text-center text-sm text-stone-500">
                     このシリーズには作者が紐づいていません

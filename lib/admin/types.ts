@@ -38,6 +38,19 @@ export type ManagedSeriesAgent = {
   sortOrder: number;
 };
 
+export type ManagedAgent = {
+  id: string;
+  name: string;
+  birthDate: string | null;
+  activeStartYear: number | null;
+  activeEndYear: number | null;
+  birthPlace: string | null;
+  authorWikiLink: string | null;
+  gender: string | null;
+  createdAt: string;
+  updatedAt: string;
+};
+
 export type ManagedSeriesItem = {
   isbn: string;
   categoryNumber: number;
