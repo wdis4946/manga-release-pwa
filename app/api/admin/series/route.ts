@@ -7,9 +7,10 @@ type AdminSeriesListRow = {
   id: string;
   search_title: string;
   display_title: string;
-  item_count: number | string | null;
-  total_count: number | string | null;
+  series_items?: { isbn: string }[];
 };
+
+type AdminSeriesBaseRow = Omit<AdminSeriesListRow, "series_items">;
 
 export async function GET(request: Request) {
   const user = await getAdminUser(request);
@@ -25,39 +26,14 @@ export async function GET(request: Request) {
   const from = (page - 1) * PAGE_SIZE;
   const supabase = createSupabaseAdminClient();
 
-  if (excludeEmpty) {
-    const { data, error } = await supabase.rpc("list_admin_series", {
-      p_query_text: queryText || null,
-      p_exclude_empty: true,
-      p_limit: PAGE_SIZE,
-      p_offset: from,
-    });
-    const rows = (data ?? []) as AdminSeriesListRow[];
-
-    if (error) {
-      console.error("[Admin series] Failed to load linked series.", error);
-      return Response.json(
-        { error: "Failed to load linked series." },
-        { status: 500 },
-      );
-    }
-
-    return Response.json({
-      series: rows.map((row) => ({
-        id: row.id,
-        searchTitle: row.search_title,
-        displayTitle: row.display_title,
-        itemCount: Number(row.item_count ?? 0),
-      })),
-      page,
-      pageSize: PAGE_SIZE,
-      total: Number(rows[0]?.total_count ?? 0),
-    });
-  }
-
   let query = supabase
     .from("series")
-    .select("id, search_title, display_title", { count: "exact" })
+    .select(
+      excludeEmpty
+        ? "id, search_title, display_title, series_items!inner(isbn)"
+        : "id, search_title, display_title",
+      { count: "exact" },
+    )
     .order("display_title", { ascending: true })
     .range(from, from + PAGE_SIZE - 1);
 
@@ -72,7 +48,24 @@ export async function GET(request: Request) {
     return Response.json({ error: "Failed to load series." }, { status: 500 });
   }
 
-  const seriesIds = (seriesRows ?? []).map((series) => series.id);
+  if (excludeEmpty) {
+    const rows = (seriesRows ?? []) as unknown as AdminSeriesListRow[];
+
+    return Response.json({
+      series: rows.map((row) => ({
+        id: row.id,
+        searchTitle: row.search_title,
+        displayTitle: row.display_title,
+        itemCount: row.series_items?.length ?? 0,
+      })),
+      page,
+      pageSize: PAGE_SIZE,
+      total: count ?? 0,
+    });
+  }
+
+  const baseRows = (seriesRows ?? []) as unknown as AdminSeriesBaseRow[];
+  const seriesIds = baseRows.map((series) => series.id);
   const { data: linkRows, error: linkError } =
     seriesIds.length === 0
       ? { data: [], error: null }
@@ -95,7 +88,7 @@ export async function GET(request: Request) {
   }
 
   return Response.json({
-    series: (seriesRows ?? []).map((row) => ({
+    series: baseRows.map((row) => ({
       id: row.id,
       searchTitle: row.search_title,
       displayTitle: row.display_title,
