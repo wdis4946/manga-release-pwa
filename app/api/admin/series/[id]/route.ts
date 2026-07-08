@@ -16,7 +16,7 @@ export async function GET(request: Request, context: RouteContext) {
   const supabase = createSupabaseAdminClient();
   const { data: series, error: seriesError } = await supabase
     .from("series")
-    .select("id, search_title, display_title")
+    .select("id, search_title, display_title, representative_image_path")
     .eq("id", id)
     .maybeSingle();
 
@@ -27,6 +27,12 @@ export async function GET(request: Request, context: RouteContext) {
   if (!series) {
     return Response.json({ error: "Series not found." }, { status: 404 });
   }
+
+  const representativeImageUrl = series.representative_image_path
+    ? supabase.storage
+        .from("series-covers")
+        .getPublicUrl(series.representative_image_path).data.publicUrl
+    : null;
 
   const { data: links, error: linksError } = await supabase
     .from("series_items")
@@ -268,6 +274,8 @@ export async function GET(request: Request, context: RouteContext) {
       id: series.id,
       searchTitle: series.search_title,
       displayTitle: series.display_title,
+      representativeImagePath: series.representative_image_path,
+      representativeImageUrl,
       itemCount: linkedItems.length,
     },
     categories: responseCategories,

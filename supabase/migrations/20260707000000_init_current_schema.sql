@@ -95,7 +95,8 @@ create table if not exists public.series (
   search_title text not null,
   created_at timestamp with time zone default now() not null,
   updated_at timestamp with time zone default now() not null,
-  display_title text not null
+  display_title text not null,
+  representative_image_path text
 );
 
 create table if not exists public.series_agents (

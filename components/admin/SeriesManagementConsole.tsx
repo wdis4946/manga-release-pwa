@@ -119,6 +119,8 @@ export function SeriesManagementConsole({
   const [isEditingSearchTitle, setIsEditingSearchTitle] = useState(false);
   const [editedSearchTitle, setEditedSearchTitle] = useState("");
   const [isUpdatingSearchTitle, setIsUpdatingSearchTitle] = useState(false);
+  const [coverFile, setCoverFile] = useState<File | null>(null);
+  const [isUpdatingCover, setIsUpdatingCover] = useState(false);
   const [categoryDrafts, setCategoryDrafts] = useState<
     Record<string, CategoryDraft>
   >({});
@@ -228,15 +230,18 @@ export function SeriesManagementConsole({
   }, [categories, items]);
 
   const authorizedFetch = useCallback(
-    (input: string, init?: RequestInit) =>
-      fetch(input, {
+    (input: string, init?: RequestInit) => {
+      const isFormData = init?.body instanceof FormData;
+
+      return fetch(input, {
         ...init,
         headers: {
-          "Content-Type": "application/json",
+          ...(isFormData ? {} : { "Content-Type": "application/json" }),
           ...init?.headers,
           Authorization: `Bearer ${accessToken}`,
         },
-      }),
+      });
+    },
     [accessToken],
   );
 
@@ -381,6 +386,7 @@ export function SeriesManagementConsole({
       setAgentSearchResults([]);
       setIsEditingTitle(false);
       setIsEditingSearchTitle(false);
+      setCoverFile(null);
       setItems(data.items);
       setSelectedItemIsbns(new Set());
       setIsDetailLoading(false);
@@ -998,6 +1004,73 @@ export function SeriesManagementConsole({
     setIsDeletingSeries(false);
   }
 
+  async function uploadRepresentativeImage() {
+    if (!selectedSeriesId || !coverFile) {
+      return;
+    }
+
+    const formData = new FormData();
+    formData.set("file", coverFile);
+    setIsUpdatingCover(true);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/cover`,
+      {
+        method: "POST",
+        body: formData,
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError("代表画像をアップロードできませんでした。");
+      setIsUpdatingCover(false);
+      return;
+    }
+
+    await Promise.all([loadSeriesDetail(selectedSeriesId), loadSeries()]);
+    setCoverFile(null);
+    setIsUpdatingCover(false);
+  }
+
+  async function deleteRepresentativeImage() {
+    if (!selectedSeriesId || !currentSeries?.representativeImagePath) {
+      return;
+    }
+
+    const confirmed = window.confirm("代表画像を削除しますか？");
+
+    if (!confirmed) {
+      return;
+    }
+
+    setIsUpdatingCover(true);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/cover`,
+      { method: "DELETE" },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError("代表画像を削除できませんでした。");
+      setIsUpdatingCover(false);
+      return;
+    }
+
+    await Promise.all([loadSeriesDetail(selectedSeriesId), loadSeries()]);
+    setCoverFile(null);
+    setIsUpdatingCover(false);
+  }
+
   async function deleteCategory(category: ManagedSeriesCategory) {
     if (!selectedSeriesId) {
       return;
@@ -1593,24 +1666,39 @@ export function SeriesManagementConsole({
                     setSelectedSeries(null);
                     setSelectedSeriesId(entry.id);
                   }}
-                  className={`w-full border-b border-stone-100 p-3 text-left ${
+                  className={`flex w-full gap-3 border-b border-stone-100 p-3 text-left ${
                     selectedSeriesId === entry.id
                       ? "bg-cyan-50"
                       : "hover:bg-stone-50"
                   }`}
                 >
-                  <p className="text-sm font-semibold text-stone-900">
-                    {entry.displayTitle}
-                  </p>
-                  {entry.searchTitle !== entry.displayTitle ? (
-                    <p className="mt-1 truncate text-xs text-stone-500">
-                      検索用: {entry.searchTitle}
+                  <div className="relative h-16 w-11 shrink-0 overflow-hidden rounded border border-stone-200 bg-stone-100">
+                    {entry.representativeImageUrl ? (
+                      <Image
+                        src={entry.representativeImageUrl}
+                        alt=""
+                        fill
+                        sizes="44px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <BookOpen className="absolute left-1/2 top-1/2 size-5 -translate-x-1/2 -translate-y-1/2 text-stone-400" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-semibold text-stone-900">
+                      {entry.displayTitle}
                     </p>
-                  ) : null}
-                  <div className="mt-1 flex items-center justify-between gap-3">
-                    <span className="shrink-0 text-xs font-semibold text-cyan-800">
-                      {entry.itemCount}冊
-                    </span>
+                    {entry.searchTitle !== entry.displayTitle ? (
+                      <p className="mt-1 truncate text-xs text-stone-500">
+                        検索用: {entry.searchTitle}
+                      </p>
+                    ) : null}
+                    <div className="mt-1 flex items-center justify-between gap-3">
+                      <span className="shrink-0 text-xs font-semibold text-cyan-800">
+                        {entry.itemCount}冊
+                      </span>
+                    </div>
                   </div>
                 </button>
               ))
@@ -1799,6 +1887,89 @@ export function SeriesManagementConsole({
                   {error}
                 </p>
               ) : null}
+
+              <section className="mt-4 rounded-md border border-stone-200 bg-white p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-stone-900">
+                    代表画像
+                  </h3>
+                  {currentSeries.representativeImagePath ? (
+                    <span className="break-all text-xs font-semibold text-stone-500">
+                      {currentSeries.representativeImagePath}
+                    </span>
+                  ) : (
+                    <span className="text-xs font-semibold text-stone-500">
+                      未設定
+                    </span>
+                  )}
+                </div>
+                <div className="mt-3 flex flex-col gap-3 sm:flex-row">
+                  <div className="relative h-48 w-32 shrink-0 overflow-hidden rounded-md border border-stone-200 bg-stone-100">
+                    {currentSeries.representativeImageUrl ? (
+                      <Image
+                        src={currentSeries.representativeImageUrl}
+                        alt={currentSeries.displayTitle}
+                        fill
+                        sizes="128px"
+                        className="object-cover"
+                      />
+                    ) : (
+                      <BookOpen className="absolute left-1/2 top-1/2 size-8 -translate-x-1/2 -translate-y-1/2 text-stone-400" />
+                    )}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <label className="flex flex-col gap-1">
+                      <span className="text-[11px] font-semibold text-stone-500">
+                        画像ファイル
+                      </span>
+                      <input
+                        type="file"
+                        accept="image/jpeg,image/png,image/webp,image/gif"
+                        onChange={(event) =>
+                          setCoverFile(event.target.files?.[0] ?? null)
+                        }
+                        className="block w-full rounded-md border border-stone-300 bg-white px-3 py-2 text-sm text-stone-700 file:mr-3 file:rounded-md file:border-0 file:bg-stone-900 file:px-3 file:py-1.5 file:text-xs file:font-bold file:text-white"
+                      />
+                    </label>
+                    {coverFile ? (
+                      <p className="mt-2 text-xs text-stone-500">
+                        選択中: {coverFile.name}
+                      </p>
+                    ) : null}
+                    <div className="mt-3 flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        disabled={!coverFile || isUpdatingCover}
+                        onClick={() => void uploadRepresentativeImage()}
+                        className="flex h-9 items-center gap-2 rounded-md bg-cyan-700 px-4 text-xs font-bold text-white hover:bg-cyan-800 disabled:opacity-40"
+                      >
+                        {isUpdatingCover ? (
+                          <LoaderCircle className="size-4 animate-spin" />
+                        ) : (
+                          <Check className="size-4" />
+                        )}
+                        登録・更新
+                      </button>
+                      <button
+                        type="button"
+                        disabled={
+                          !currentSeries.representativeImagePath ||
+                          isUpdatingCover
+                        }
+                        onClick={() => void deleteRepresentativeImage()}
+                        className="flex h-9 items-center gap-2 rounded-md border border-red-300 bg-white px-4 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-40"
+                      >
+                        {isUpdatingCover ? (
+                          <LoaderCircle className="size-4 animate-spin" />
+                        ) : (
+                          <Trash2 className="size-4" />
+                        )}
+                        削除
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </section>
 
               <section className="mt-4 rounded-md border border-stone-200 bg-white p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">

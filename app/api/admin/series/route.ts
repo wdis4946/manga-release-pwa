@@ -7,10 +7,32 @@ type AdminSeriesListRow = {
   id: string;
   search_title: string;
   display_title: string;
+  representative_image_path: string | null;
   series_items?: { isbn: string }[];
 };
 
 type AdminSeriesBaseRow = Omit<AdminSeriesListRow, "series_items">;
+
+function toSeriesResponse(
+  row: AdminSeriesBaseRow,
+  itemCount: number,
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+) {
+  const representativeImageUrl = row.representative_image_path
+    ? supabase.storage
+        .from("series-covers")
+        .getPublicUrl(row.representative_image_path).data.publicUrl
+    : null;
+
+  return {
+    id: row.id,
+    searchTitle: row.search_title,
+    displayTitle: row.display_title,
+    representativeImagePath: row.representative_image_path,
+    representativeImageUrl,
+    itemCount,
+  };
+}
 
 export async function GET(request: Request) {
   const user = await getAdminUser(request);
@@ -30,8 +52,8 @@ export async function GET(request: Request) {
     .from("series")
     .select(
       excludeEmpty
-        ? "id, search_title, display_title, series_items!inner(isbn)"
-        : "id, search_title, display_title",
+        ? "id, search_title, display_title, representative_image_path, series_items!inner(isbn)"
+        : "id, search_title, display_title, representative_image_path",
       { count: "exact" },
     )
     .order("display_title", { ascending: true })
@@ -52,12 +74,9 @@ export async function GET(request: Request) {
     const rows = (seriesRows ?? []) as unknown as AdminSeriesListRow[];
 
     return Response.json({
-      series: rows.map((row) => ({
-        id: row.id,
-        searchTitle: row.search_title,
-        displayTitle: row.display_title,
-        itemCount: row.series_items?.length ?? 0,
-      })),
+      series: rows.map((row) =>
+        toSeriesResponse(row, row.series_items?.length ?? 0, supabase),
+      ),
       page,
       pageSize: PAGE_SIZE,
       total: count ?? 0,
@@ -88,12 +107,9 @@ export async function GET(request: Request) {
   }
 
   return Response.json({
-    series: baseRows.map((row) => ({
-      id: row.id,
-      searchTitle: row.search_title,
-      displayTitle: row.display_title,
-      itemCount: itemCounts.get(row.id) ?? 0,
-    })),
+    series: baseRows.map((row) =>
+      toSeriesResponse(row, itemCounts.get(row.id) ?? 0, supabase),
+    ),
     page,
     pageSize: PAGE_SIZE,
     total: count ?? 0,
