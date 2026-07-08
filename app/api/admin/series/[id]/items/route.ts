@@ -153,7 +153,11 @@ export async function PATCH(request: Request, context: RouteContext) {
       "update_series_item_display_orders",
       {
         p_series_id: id,
-        p_item_orders: itemOrders,
+        p_item_orders: itemOrders.map((item) => ({
+          isbn: item.isbn,
+          category_number: item.categoryNumber,
+          display_order: item.displayOrder,
+        })),
       },
     );
 
