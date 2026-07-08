@@ -154,6 +154,7 @@ export function SeriesManagementConsole({
   const [deletingGenreId, setDeletingGenreId] = useState<string | null>(
     null,
   );
+  const [newGenreName, setNewGenreName] = useState("");
   const [publisherSearchText, setPublisherSearchText] = useState("");
   const [publisherSearchResults, setPublisherSearchResults] = useState<
     ManagedPublisher[]
@@ -371,6 +372,7 @@ export function SeriesManagementConsole({
       setNewCategoryName("");
       setGenreSearchText("");
       setGenreSearchResults([]);
+      setNewGenreName("");
       setPublisherSearchText("");
       setPublisherSearchResults([]);
       setNewImprintName("");
@@ -1193,6 +1195,68 @@ export function SeriesManagementConsole({
     setGenreSearchText("");
     setGenreSearchResults([]);
     setIsAddingGenre(false);
+  }
+
+  async function createAndAddGenre() {
+    if (!selectedSeriesId) {
+      return;
+    }
+
+    const genreName = newGenreName.trim();
+
+    if (!genreName) {
+      setError("ジャンル名を入力してください。");
+      return;
+    }
+
+    setIsAddingGenre(true);
+    setError("");
+    const createResponse = await authorizedFetch("/api/admin/genres", {
+      method: "POST",
+      body: JSON.stringify({ genreName }),
+    });
+
+    if (createResponse.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!createResponse.ok && createResponse.status !== 409) {
+      setError("ジャンルを作成できませんでした。");
+      setIsAddingGenre(false);
+      return;
+    }
+
+    let genre: ManagedGenre | undefined;
+
+    if (createResponse.ok) {
+      const data = (await createResponse.json()) as { genre: ManagedGenre };
+      genre = data.genre;
+    } else {
+      const params = new URLSearchParams({
+        q: genreName,
+        pageSize: "20",
+      });
+      const searchResponse = await authorizedFetch(`/api/admin/genres?${params}`);
+
+      if (!searchResponse.ok) {
+        setError("既存のジャンルを取得できませんでした。");
+        setIsAddingGenre(false);
+        return;
+      }
+
+      const data = (await searchResponse.json()) as GenresResponse;
+      genre = data.genres.find((entry) => entry.genreName === genreName);
+    }
+
+    if (!genre) {
+      setError("追加するジャンルを特定できませんでした。");
+      setIsAddingGenre(false);
+      return;
+    }
+
+    await addGenre(genre);
+    setNewGenreName("");
   }
 
   async function deleteGenre(genre: ManagedSeriesGenre) {
@@ -2117,6 +2181,37 @@ export function SeriesManagementConsole({
                     </div>
                   ) : null}
                 </div>
+                <form
+                  className="mt-3 grid gap-2 rounded-md border border-stone-200 bg-stone-50 p-3 sm:grid-cols-[1fr_auto]"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void createAndAddGenre();
+                  }}
+                >
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold text-stone-500">
+                      新規ジャンル名
+                    </span>
+                    <input
+                      value={newGenreName}
+                      onChange={(event) => setNewGenreName(event.target.value)}
+                      placeholder="アクション"
+                      className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={isAddingGenre}
+                    className="flex h-9 items-center justify-center gap-2 self-end rounded-md bg-cyan-700 px-4 text-xs font-bold text-white hover:bg-cyan-800 disabled:opacity-40"
+                  >
+                    {isAddingGenre ? (
+                      <LoaderCircle className="size-4 animate-spin" />
+                    ) : (
+                      <Plus className="size-4" />
+                    )}
+                    新規追加
+                  </button>
+                </form>
                 {genres.length === 0 ? (
                   <p className="mt-3 rounded-md bg-stone-50 px-3 py-4 text-center text-sm text-stone-500">
                     このシリーズにはジャンルが設定されていません

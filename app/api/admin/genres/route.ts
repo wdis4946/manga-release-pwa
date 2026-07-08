@@ -45,3 +45,40 @@ export async function GET(request: Request) {
     total: count ?? 0,
   });
 }
+
+export async function POST(request: Request) {
+  const user = await getAdminUser(request);
+
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    genreName?: string;
+  };
+  const genreName = body.genreName?.trim();
+
+  if (!genreName) {
+    return Response.json({ error: "Genre name is required." }, { status: 400 });
+  }
+
+  const { data, error } = await createSupabaseAdminClient()
+    .from("genres")
+    .insert({
+      name: genreName,
+    })
+    .select("id, name")
+    .single();
+
+  if (error) {
+    const status = error.code === "23505" ? 409 : 500;
+    return Response.json({ error: error.message }, { status });
+  }
+
+  return Response.json({
+    genre: {
+      genreId: data.id,
+      genreName: data.name,
+    },
+  });
+}

@@ -277,6 +277,9 @@ alter table public.madb_manga_series
 alter table public.genres
   add constraint genres_pkey PRIMARY KEY (id);
 
+alter table public.genres
+  add constraint genres_name_key UNIQUE (name);
+
 alter table public.series
   add constraint series_pkey PRIMARY KEY (id);
 
