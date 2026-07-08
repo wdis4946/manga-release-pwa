@@ -119,6 +119,9 @@ export function SeriesManagementConsole({
   const [isEditingSearchTitle, setIsEditingSearchTitle] = useState(false);
   const [editedSearchTitle, setEditedSearchTitle] = useState("");
   const [isUpdatingSearchTitle, setIsUpdatingSearchTitle] = useState(false);
+  const [isEditingDescription, setIsEditingDescription] = useState(false);
+  const [editedDescription, setEditedDescription] = useState("");
+  const [isUpdatingDescription, setIsUpdatingDescription] = useState(false);
   const [coverFile, setCoverFile] = useState<File | null>(null);
   const [isUpdatingCover, setIsUpdatingCover] = useState(false);
   const [categoryDrafts, setCategoryDrafts] = useState<
@@ -352,6 +355,7 @@ export function SeriesManagementConsole({
       setSelectedSeries(data.series);
       setEditedTitle(data.series.displayTitle);
       setEditedSearchTitle(data.series.searchTitle);
+      setEditedDescription(data.series.description ?? "");
       setCategories(data.categories);
       setGenres(data.genres);
       setPublishers(data.publishers);
@@ -386,6 +390,7 @@ export function SeriesManagementConsole({
       setAgentSearchResults([]);
       setIsEditingTitle(false);
       setIsEditingSearchTitle(false);
+      setIsEditingDescription(false);
       setCoverFile(null);
       setItems(data.items);
       setSelectedItemIsbns(new Set());
@@ -784,6 +789,62 @@ export function SeriesManagementConsole({
     setEditedSearchTitle(updatedSeries.searchTitle);
     setIsEditingSearchTitle(false);
     setIsUpdatingSearchTitle(false);
+  }
+
+  async function updateDescription(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!selectedSeriesId) {
+      return;
+    }
+
+    setIsUpdatingDescription(true);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}`,
+      {
+        method: "PATCH",
+        body: JSON.stringify({ description: editedDescription }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError("あらすじを更新できませんでした。");
+      setIsUpdatingDescription(false);
+      return;
+    }
+
+    const data = (await response.json()) as {
+      series: Omit<ManagedMangaSeries, "itemCount">;
+    };
+    const updatedDescription = data.series.description ?? null;
+
+    setSelectedSeries((current) =>
+      current
+        ? {
+            ...current,
+            description: updatedDescription,
+          }
+        : current,
+    );
+    setSeries((current) =>
+      current.map((entry) =>
+        entry.id === data.series.id
+          ? {
+              ...entry,
+              description: updatedDescription,
+            }
+          : entry,
+      ),
+    );
+    setEditedDescription(updatedDescription ?? "");
+    setIsEditingDescription(false);
+    setIsUpdatingDescription(false);
   }
 
   function updateCategoryDraft(
@@ -1887,6 +1948,84 @@ export function SeriesManagementConsole({
                   {error}
                 </p>
               ) : null}
+
+              <section className="mt-4 rounded-md border border-stone-200 bg-white p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-stone-900">
+                    あらすじ
+                  </h3>
+                  {!isEditingDescription ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setEditedDescription(currentSeries.description ?? "");
+                        setIsEditingDescription(true);
+                      }}
+                      className="flex h-8 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-xs font-bold text-stone-700 hover:bg-stone-50"
+                    >
+                      <Pencil className="size-4" />
+                      編集
+                    </button>
+                  ) : null}
+                </div>
+                {isEditingDescription ? (
+                  <form
+                    onSubmit={(event) => void updateDescription(event)}
+                    className="mt-3"
+                  >
+                    <textarea
+                      autoFocus
+                      value={editedDescription}
+                      onChange={(event) =>
+                        setEditedDescription(event.target.value)
+                      }
+                      rows={6}
+                      placeholder="シリーズのあらすじを入力"
+                      className="w-full resize-y rounded-md border border-stone-300 px-3 py-2 text-sm leading-6 outline-none focus:border-cyan-700"
+                    />
+                    <div className="mt-2 flex flex-wrap justify-end gap-2">
+                      <button
+                        type="button"
+                        disabled={isUpdatingDescription}
+                        onClick={() => {
+                          setEditedDescription(
+                            currentSeries.description ?? "",
+                          );
+                          setIsEditingDescription(false);
+                        }}
+                        className="flex h-9 items-center gap-2 rounded-md border border-stone-300 bg-white px-4 text-xs font-bold text-stone-700 hover:bg-stone-50 disabled:opacity-40"
+                      >
+                        <X className="size-4" />
+                        キャンセル
+                      </button>
+                      <button
+                        type="submit"
+                        disabled={
+                          isUpdatingDescription ||
+                          editedDescription.trim() ===
+                            (currentSeries.description ?? "").trim()
+                        }
+                        className="flex h-9 items-center gap-2 rounded-md bg-cyan-700 px-4 text-xs font-bold text-white hover:bg-cyan-800 disabled:opacity-40"
+                      >
+                        {isUpdatingDescription ? (
+                          <LoaderCircle className="size-4 animate-spin" />
+                        ) : (
+                          <Check className="size-4" />
+                        )}
+                        保存
+                      </button>
+                    </div>
+                  </form>
+                ) : currentSeries.description ? (
+                  <p className="mt-3 whitespace-pre-wrap text-sm leading-7 text-stone-700">
+                    {currentSeries.description}
+                  </p>
+                ) : (
+                  <p className="mt-3 rounded-md bg-stone-50 px-3 py-4 text-center text-sm text-stone-500">
+                    あらすじは未設定です
+                  </p>
+                )}
+              </section>
 
               <section className="mt-4 rounded-md border border-stone-200 bg-white p-3">
                 <div className="flex flex-wrap items-center justify-between gap-2">

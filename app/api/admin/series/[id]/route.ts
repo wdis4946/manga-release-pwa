@@ -16,7 +16,9 @@ export async function GET(request: Request, context: RouteContext) {
   const supabase = createSupabaseAdminClient();
   const { data: series, error: seriesError } = await supabase
     .from("series")
-    .select("id, search_title, display_title, representative_image_path")
+    .select(
+      "id, search_title, display_title, description, representative_image_path",
+    )
     .eq("id", id)
     .maybeSingle();
 
@@ -274,6 +276,7 @@ export async function GET(request: Request, context: RouteContext) {
       id: series.id,
       searchTitle: series.search_title,
       displayTitle: series.display_title,
+      description: series.description,
       representativeImagePath: series.representative_image_path,
       representativeImageUrl,
       itemCount: linkedItems.length,
@@ -312,12 +315,16 @@ export async function PATCH(request: Request, context: RouteContext) {
   const body = (await request.json()) as {
     displayTitle?: string;
     searchTitle?: string;
+    description?: string | null;
   };
   const displayTitle = body.displayTitle?.trim();
   const searchTitle = body.searchTitle?.trim();
+  const description =
+    body.description === undefined ? undefined : body.description?.trim() || null;
   const updates: {
     display_title?: string;
     search_title?: string;
+    description?: string | null;
     updated_at: string;
   } = {
     updated_at: new Date().toISOString(),
@@ -345,9 +352,17 @@ export async function PATCH(request: Request, context: RouteContext) {
     updates.search_title = searchTitle;
   }
 
-  if (!updates.display_title && !updates.search_title) {
+  if (body.description !== undefined) {
+    updates.description = description;
+  }
+
+  if (
+    !updates.display_title &&
+    !updates.search_title &&
+    body.description === undefined
+  ) {
     return Response.json(
-      { error: "Display title or search title is required." },
+      { error: "Display title, search title, or description is required." },
       { status: 400 },
     );
   }
@@ -357,7 +372,7 @@ export async function PATCH(request: Request, context: RouteContext) {
     .from("series")
     .update(updates)
     .eq("id", id)
-    .select("id, search_title, display_title")
+    .select("id, search_title, display_title, description")
     .single();
 
   if (error) {
@@ -370,6 +385,7 @@ export async function PATCH(request: Request, context: RouteContext) {
       id: data.id,
       searchTitle: data.search_title,
       displayTitle: data.display_title,
+      description: data.description,
     },
   });
 }

@@ -96,6 +96,7 @@ create table if not exists public.series (
   created_at timestamp with time zone default now() not null,
   updated_at timestamp with time zone default now() not null,
   display_title text not null,
+  description text,
   representative_image_path text
 );
 

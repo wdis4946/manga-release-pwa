@@ -7,6 +7,7 @@ type AdminSeriesListRow = {
   id: string;
   search_title: string;
   display_title: string;
+  description: string | null;
   representative_image_path: string | null;
   series_items?: { isbn: string }[];
 };
@@ -28,6 +29,7 @@ function toSeriesResponse(
     id: row.id,
     searchTitle: row.search_title,
     displayTitle: row.display_title,
+    description: row.description,
     representativeImagePath: row.representative_image_path,
     representativeImageUrl,
     itemCount,
@@ -52,8 +54,8 @@ export async function GET(request: Request) {
     .from("series")
     .select(
       excludeEmpty
-        ? "id, search_title, display_title, representative_image_path, series_items!inner(isbn)"
-        : "id, search_title, display_title, representative_image_path",
+        ? "id, search_title, display_title, description, representative_image_path, series_items!inner(isbn)"
+        : "id, search_title, display_title, description, representative_image_path",
       { count: "exact" },
     )
     .order("display_title", { ascending: true })

@@ -18,6 +18,7 @@ export type MangaSeriesCandidate = {
   id: string;
   searchTitle: string;
   displayTitle: string;
+  description?: string | null;
   representativeImagePath?: string | null;
   representativeImageUrl?: string | null;
   similarityScore?: number;
