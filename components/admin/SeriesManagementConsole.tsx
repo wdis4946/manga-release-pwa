@@ -138,6 +138,12 @@ export function SeriesManagementConsole({
   const [movingItemIsbn, setMovingItemIsbn] = useState<string | null>(null);
   const [bulkMoveCategoryNumber, setBulkMoveCategoryNumber] = useState("0");
   const [isBulkMoving, setIsBulkMoving] = useState(false);
+  const [dirtyOrderCategoryNumbers, setDirtyOrderCategoryNumbers] = useState<
+    Set<number>
+  >(() => new Set());
+  const [savingOrderCategoryNumber, setSavingOrderCategoryNumber] = useState<
+    number | null
+  >(null);
   const [isDeletingSeries, setIsDeletingSeries] = useState(false);
   const [deletingCategoryNumber, setDeletingCategoryNumber] = useState<
     number | null
@@ -149,9 +155,6 @@ export function SeriesManagementConsole({
   const [isSearchingAgents, setIsSearchingAgents] = useState(false);
   const [isAddingAgent, setIsAddingAgent] = useState(false);
   const [updatingAgentId, setUpdatingAgentId] = useState<string | null>(null);
-  const [reorderingItemIsbn, setReorderingItemIsbn] = useState<string | null>(
-    null,
-  );
   const [genreSearchText, setGenreSearchText] = useState("");
   const [genreSearchResults, setGenreSearchResults] = useState<ManagedGenre[]>(
     [],
@@ -406,6 +409,7 @@ export function SeriesManagementConsole({
       setCoverFile(null);
       setItems(data.items);
       setSelectedItemIsbns(new Set());
+      setDirtyOrderCategoryNumbers(new Set());
       setIsDetailLoading(false);
     },
     [accessToken, authorizedFetch, handleUnauthorized],
@@ -1607,14 +1611,43 @@ export function SeriesManagementConsole({
     const nextItems = [...groupItems];
     const [movedItem] = nextItems.splice(currentIndex, 1);
     nextItems.splice(nextIndex, 0, movedItem);
-    const itemOrders = nextItems.map((entry, index) => ({
+
+    const nextOrders = new Map(
+      nextItems.map((entry, index) => [entry.isbn, index]),
+    );
+
+    setItems((current) =>
+      current.map((entry) =>
+        nextOrders.has(entry.isbn)
+          ? {
+              ...entry,
+              displayOrder: nextOrders.get(entry.isbn) ?? entry.displayOrder,
+            }
+          : entry,
+      ),
+    );
+    setDirtyOrderCategoryNumbers((current) => {
+      const next = new Set(current);
+      next.add(item.categoryNumber);
+      return next;
+    });
+  }
+
+  async function saveItemDisplayOrder(groupItems: ManagedSeriesItem[]) {
+    if (!selectedSeriesId || groupItems.length === 0) {
+      return;
+    }
+
+    const categoryNumber = groupItems[0].categoryNumber;
+    const itemOrders = groupItems.map((entry, index) => ({
       isbn: entry.isbn,
       categoryNumber: entry.categoryNumber,
       displayOrder: index,
     }));
 
-    setReorderingItemIsbn(item.isbn);
+    setSavingOrderCategoryNumber(categoryNumber);
     setError("");
+
     const response = await authorizedFetch(
       `/api/admin/series/${selectedSeriesId}/items`,
       {
@@ -1630,12 +1663,17 @@ export function SeriesManagementConsole({
 
     if (!response.ok) {
       setError("アイテムの表示順を変更できませんでした。");
-      setReorderingItemIsbn(null);
+      setSavingOrderCategoryNumber(null);
       return;
     }
 
     await loadSeriesDetail(selectedSeriesId);
-    setReorderingItemIsbn(null);
+    setDirtyOrderCategoryNumbers((current) => {
+      const next = new Set(current);
+      next.delete(categoryNumber);
+      return next;
+    });
+    setSavingOrderCategoryNumber(null);
   }
 
   async function logout() {
@@ -2710,6 +2748,11 @@ export function SeriesManagementConsole({
                       categoryNumber: String(group.categoryNumber),
                       categoryName: group.categoryName,
                     };
+                    const isOrderDirty = dirtyOrderCategoryNumbers.has(
+                      group.categoryNumber,
+                    );
+                    const isSavingOrder =
+                      savingOrderCategoryNumber === group.categoryNumber;
 
                     return (
                       <section
@@ -2768,6 +2811,25 @@ export function SeriesManagementConsole({
                                 <Check className="size-4" />
                               )}
                               保存
+                            </button>
+                            <button
+                              type="button"
+                              disabled={
+                                !isOrderDirty ||
+                                isSavingOrder ||
+                                group.items.length === 0
+                              }
+                              onClick={() =>
+                                void saveItemDisplayOrder(group.items)
+                              }
+                              className="flex h-9 items-center gap-2 rounded-md border border-cyan-300 bg-white px-3 text-xs font-bold text-cyan-800 hover:bg-cyan-50 disabled:opacity-40"
+                            >
+                              {isSavingOrder ? (
+                                <LoaderCircle className="size-4 animate-spin" />
+                              ) : (
+                                <Check className="size-4" />
+                              )}
+                              順序を保存
                             </button>
                             <button
                               type="button"
@@ -2855,7 +2917,7 @@ export function SeriesManagementConsole({
                                       title="表示順を上へ"
                                       disabled={
                                         itemIndex === 0 ||
-                                        reorderingItemIsbn !== null
+                                        isSavingOrder
                                       }
                                       onClick={() =>
                                         void moveItemDisplayOrder(
@@ -2866,18 +2928,14 @@ export function SeriesManagementConsole({
                                       }
                                       className="flex size-8 items-center justify-center rounded-md border border-stone-300 text-stone-600 hover:bg-stone-50 disabled:opacity-40"
                                     >
-                                      {reorderingItemIsbn === item.isbn ? (
-                                        <LoaderCircle className="size-4 animate-spin" />
-                                      ) : (
-                                        <ArrowUp className="size-4" />
-                                      )}
+                                      <ArrowUp className="size-4" />
                                     </button>
                                     <button
                                       type="button"
                                       title="表示順を下へ"
                                       disabled={
                                         itemIndex === group.items.length - 1 ||
-                                        reorderingItemIsbn !== null
+                                        isSavingOrder
                                       }
                                       onClick={() =>
                                         void moveItemDisplayOrder(
@@ -2888,11 +2946,7 @@ export function SeriesManagementConsole({
                                       }
                                       className="flex size-8 items-center justify-center rounded-md border border-stone-300 text-stone-600 hover:bg-stone-50 disabled:opacity-40"
                                     >
-                                      {reorderingItemIsbn === item.isbn ? (
-                                        <LoaderCircle className="size-4 animate-spin" />
-                                      ) : (
-                                        <ArrowDown className="size-4" />
-                                      )}
+                                      <ArrowDown className="size-4" />
                                     </button>
                                     <select
                                       value={item.categoryNumber}

@@ -1636,8 +1636,14 @@ begin
     select
       moved.isbn,
       coalesce(destination.max_display_order, -1)
-        + row_number() over (order by moved.display_order, moved.isbn)::integer
-        as next_display_order
+        + row_number() over (
+          order by
+            case
+              when moved.display_order < 0 then (-1000000 - moved.display_order)
+              else moved.display_order
+            end,
+            moved.isbn
+        )::integer as next_display_order
     from public.series_items as moved
     cross join (
       select max(display_order) as max_display_order
