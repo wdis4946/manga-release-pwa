@@ -57,6 +57,59 @@ function rpcMutationErrorResponse(error: {
   );
 }
 
+export async function POST(request: Request, context: RouteContext) {
+  const user = await getAdminUser(request);
+
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await context.params;
+  const body = (await request.json().catch(() => ({}))) as {
+    isbn?: string;
+    isbns?: string[];
+  };
+  const isbns = Array.from(
+    new Set(
+      parseIsbns([
+        ...(body.isbns ?? []),
+        ...(body.isbn ? [body.isbn] : []),
+      ])
+        .map((isbn) => isbn.replace(/[-\s]/g, ""))
+        .filter((isbn) => isbn.length > 0),
+    ),
+  );
+
+  if (isbns.length === 0) {
+    return Response.json({ error: "No ISBNs were provided." }, { status: 400 });
+  }
+
+  const { data, error } = await createSupabaseAdminClient().rpc(
+    "manual_link_manga_items",
+    {
+      p_isbns: isbns,
+      p_series_id: id,
+      p_user_id: user.id,
+    },
+  );
+
+  if (error) {
+    console.error("[Admin series] Failed to link item.", {
+      seriesId: id,
+      isbns,
+      error,
+    });
+
+    return Response.json({ error: error.message }, { status: 500 });
+  }
+
+  return Response.json({
+    ok: true,
+    requestedCount: isbns.length,
+    linkedCount: data ?? 0,
+  });
+}
+
 export async function DELETE(request: Request, context: RouteContext) {
   const user = await getAdminUser(request);
 

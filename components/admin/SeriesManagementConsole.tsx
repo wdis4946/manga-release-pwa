@@ -102,6 +102,8 @@ export function SeriesManagementConsole({
   const [publishers, setPublishers] = useState<ManagedSeriesPublisher[]>([]);
   const [agents, setAgents] = useState<ManagedSeriesAgent[]>([]);
   const [items, setItems] = useState<ManagedSeriesItem[]>([]);
+  const [newItemIsbn, setNewItemIsbn] = useState("");
+  const [isLinkingItem, setIsLinkingItem] = useState(false);
   const [queryText, setQueryText] = useState(initialQuery);
   const [imprintFilterText, setImprintFilterText] = useState("");
   const [publisherFilterText, setPublisherFilterText] = useState("");
@@ -408,6 +410,7 @@ export function SeriesManagementConsole({
       setIsEditingDescription(false);
       setCoverFile(null);
       setItems(data.items);
+      setNewItemIsbn("");
       setSelectedItemIsbns(new Set());
       setDirtyOrderCategoryNumbers(new Set());
       setIsDetailLoading(false);
@@ -699,6 +702,46 @@ export function SeriesManagementConsole({
     ]);
     setSelectedItemIsbns(new Set());
     setIsBulkUnlinking(false);
+  }
+
+  async function linkItem(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!selectedSeriesId) {
+      return;
+    }
+
+    const isbn = newItemIsbn.replace(/[-\s]/g, "").trim();
+
+    if (!isbn) {
+      setError("ISBNを入力してください。");
+      return;
+    }
+
+    setIsLinkingItem(true);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/items`,
+      {
+        method: "POST",
+        body: JSON.stringify({ isbn }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError("アイテムを紐づけできませんでした。");
+      setIsLinkingItem(false);
+      return;
+    }
+
+    await Promise.all([loadSeriesDetail(selectedSeriesId), loadSeries()]);
+    setNewItemIsbn("");
+    setIsLinkingItem(false);
   }
 
   async function updateTitle(event: React.FormEvent) {
@@ -2622,6 +2665,36 @@ export function SeriesManagementConsole({
                   </div>
                 )}
               </section>
+
+              <form
+                onSubmit={(event) => void linkItem(event)}
+                className="mt-4 flex flex-wrap items-end gap-2 rounded-md border border-dashed border-cyan-300 bg-white px-3 py-3"
+              >
+                <label className="flex min-w-[220px] flex-1 flex-col gap-1">
+                  <span className="text-[11px] font-semibold text-stone-500">
+                    追加するISBN
+                  </span>
+                  <input
+                    value={newItemIsbn}
+                    onChange={(event) => setNewItemIsbn(event.target.value)}
+                    placeholder="978..."
+                    inputMode="numeric"
+                    className="h-9 rounded-md border border-stone-300 px-3 font-mono text-sm outline-none focus:border-cyan-700"
+                  />
+                </label>
+                <button
+                  type="submit"
+                  disabled={isLinkingItem || !newItemIsbn.trim()}
+                  className="flex h-9 items-center gap-2 rounded-md bg-cyan-700 px-4 text-xs font-bold text-white hover:bg-cyan-800 disabled:opacity-40"
+                >
+                  {isLinkingItem ? (
+                    <LoaderCircle className="size-4 animate-spin" />
+                  ) : (
+                    <Plus className="size-4" />
+                  )}
+                  アイテム登録
+                </button>
+              </form>
 
               {items.length > 0 ? (
                 <div className="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-md border border-stone-200 bg-white px-3 py-2">
