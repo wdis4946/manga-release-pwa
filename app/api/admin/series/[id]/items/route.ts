@@ -29,6 +29,34 @@ function parseIsbns(isbns: string[] | undefined) {
   );
 }
 
+function getRpcMutationErrorStatus(message: string) {
+  if (
+    message.includes("Category was not found") ||
+    message.includes("Item was not found")
+  ) {
+    return 409;
+  }
+
+  return 500;
+}
+
+function rpcMutationErrorResponse(error: {
+  message: string;
+  code?: string;
+  details?: string;
+  hint?: string;
+}) {
+  return Response.json(
+    {
+      error: error.message,
+      code: error.code,
+      details: error.details,
+      hint: error.hint,
+    },
+    { status: getRpcMutationErrorStatus(error.message) },
+  );
+}
+
 export async function DELETE(request: Request, context: RouteContext) {
   const user = await getAdminUser(request);
 
@@ -130,8 +158,12 @@ export async function PATCH(request: Request, context: RouteContext) {
     );
 
     if (error) {
-      const status = error.message.includes("not found") ? 404 : 500;
-      return Response.json({ error: error.message }, { status });
+      console.error("[Admin series] Failed to update item display order.", {
+        seriesId: id,
+        itemOrders,
+        error,
+      });
+      return rpcMutationErrorResponse(error);
     }
 
     return Response.json({
@@ -169,8 +201,13 @@ export async function PATCH(request: Request, context: RouteContext) {
   );
 
   if (error) {
-    const status = error.message.includes("not found") ? 404 : 500;
-    return Response.json({ error: error.message }, { status });
+    console.error("[Admin series] Failed to move items to category.", {
+      seriesId: id,
+      isbns,
+      categoryNumber,
+      error,
+    });
+    return rpcMutationErrorResponse(error);
   }
 
   return Response.json({
