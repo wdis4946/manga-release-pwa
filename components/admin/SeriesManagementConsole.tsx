@@ -28,10 +28,12 @@ import type {
   ManagedAgent,
   ManagedGenre,
   ManagedMangaSeries,
+  ManagedPublisher,
   ManagedSeriesAgent,
   ManagedSeriesCategory,
   ManagedSeriesGenre,
   ManagedSeriesItem,
+  ManagedSeriesPublisher,
 } from "@/lib/admin/types";
 import { createSupabaseBrowserClient } from "@/lib/supabase/client";
 
@@ -46,6 +48,7 @@ type SeriesDetailResponse = {
   series: ManagedMangaSeries;
   categories: ManagedSeriesCategory[];
   genres: ManagedSeriesGenre[];
+  publishers: ManagedSeriesPublisher[];
   agents: ManagedSeriesAgent[];
   items: ManagedSeriesItem[];
 };
@@ -64,6 +67,13 @@ type AgentsResponse = {
 
 type GenresResponse = {
   genres: ManagedGenre[];
+  page: number;
+  pageSize: number;
+  total: number;
+};
+
+type PublishersResponse = {
+  publishers: ManagedPublisher[];
   page: number;
   pageSize: number;
   total: number;
@@ -89,6 +99,7 @@ export function SeriesManagementConsole({
     useState<ManagedMangaSeries | null>(null);
   const [categories, setCategories] = useState<ManagedSeriesCategory[]>([]);
   const [genres, setGenres] = useState<ManagedSeriesGenre[]>([]);
+  const [publishers, setPublishers] = useState<ManagedSeriesPublisher[]>([]);
   const [agents, setAgents] = useState<ManagedSeriesAgent[]>([]);
   const [items, setItems] = useState<ManagedSeriesItem[]>([]);
   const [queryText, setQueryText] = useState(initialQuery);
@@ -143,6 +154,17 @@ export function SeriesManagementConsole({
   const [deletingGenreId, setDeletingGenreId] = useState<string | null>(
     null,
   );
+  const [publisherSearchText, setPublisherSearchText] = useState("");
+  const [publisherSearchResults, setPublisherSearchResults] = useState<
+    ManagedPublisher[]
+  >([]);
+  const [isSearchingPublishers, setIsSearchingPublishers] = useState(false);
+  const [isAddingPublisher, setIsAddingPublisher] = useState(false);
+  const [deletingPublisherId, setDeletingPublisherId] = useState<string | null>(
+    null,
+  );
+  const [newImprintName, setNewImprintName] = useState("");
+  const [newPublisherName, setNewPublisherName] = useState("");
   const [error, setError] = useState("");
   const seriesRequestIdRef = useRef(0);
   const detailRequestIdRef = useRef(0);
@@ -289,6 +311,7 @@ export function SeriesManagementConsole({
         setSelectedSeries(null);
         setCategories([]);
         setGenres([]);
+        setPublishers([]);
         setAgents([]);
         setItems([]);
         return;
@@ -325,6 +348,7 @@ export function SeriesManagementConsole({
       setEditedSearchTitle(data.series.searchTitle);
       setCategories(data.categories);
       setGenres(data.genres);
+      setPublishers(data.publishers);
       setAgents(data.agents);
       setCategoryDrafts(
         Object.fromEntries(
@@ -347,6 +371,10 @@ export function SeriesManagementConsole({
       setNewCategoryName("");
       setGenreSearchText("");
       setGenreSearchResults([]);
+      setPublisherSearchText("");
+      setPublisherSearchResults([]);
+      setNewImprintName("");
+      setNewPublisherName("");
       setAgentSearchText("");
       setAgentSearchResults([]);
       setIsEditingTitle(false);
@@ -422,6 +450,38 @@ export function SeriesManagementConsole({
     [accessToken, authorizedFetch, handleUnauthorized],
   );
 
+  const searchPublishers = useCallback(
+    async (query: string) => {
+      if (!accessToken || query.trim().length < 1) {
+        setPublisherSearchResults([]);
+        return;
+      }
+
+      setIsSearchingPublishers(true);
+      const params = new URLSearchParams({
+        q: query.trim(),
+        pageSize: "8",
+      });
+      const response = await authorizedFetch(`/api/admin/publishers?${params}`);
+
+      if (response.status === 401) {
+        await handleUnauthorized();
+        return;
+      }
+
+      if (!response.ok) {
+        setError("出版社・掲載誌検索に失敗しました。");
+        setIsSearchingPublishers(false);
+        return;
+      }
+
+      const data = (await response.json()) as PublishersResponse;
+      setPublisherSearchResults(data.publishers);
+      setIsSearchingPublishers(false);
+    },
+    [accessToken, authorizedFetch, handleUnauthorized],
+  );
+
   useEffect(() => {
     const supabase = createSupabaseBrowserClient();
 
@@ -481,6 +541,14 @@ export function SeriesManagementConsole({
     );
     return () => window.clearTimeout(timeout);
   }, [genreSearchText, searchGenres]);
+
+  useEffect(() => {
+    const timeout = window.setTimeout(
+      () => void searchPublishers(publisherSearchText),
+      250,
+    );
+    return () => window.clearTimeout(timeout);
+  }, [publisherSearchText, searchPublishers]);
 
   async function unlinkItem(item: ManagedSeriesItem) {
     if (!selectedSeriesId) {
@@ -1163,6 +1231,151 @@ export function SeriesManagementConsole({
     setDeletingGenreId(null);
   }
 
+  async function addPublisher(publisher: ManagedPublisher) {
+    if (!selectedSeriesId) {
+      return;
+    }
+
+    setIsAddingPublisher(true);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/publishers`,
+      {
+        method: "POST",
+        body: JSON.stringify({ publisherId: publisher.publisherId }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError(
+        response.status === 409
+          ? "同じ出版社・掲載誌が既に追加されています。"
+          : "出版社・掲載誌を追加できませんでした。",
+      );
+      setIsAddingPublisher(false);
+      return;
+    }
+
+    await loadSeriesDetail(selectedSeriesId);
+    setPublisherSearchText("");
+    setPublisherSearchResults([]);
+    setIsAddingPublisher(false);
+  }
+
+  async function createAndAddPublisher() {
+    if (!selectedSeriesId) {
+      return;
+    }
+
+    const imprintName = newImprintName.trim();
+    const publisherName = newPublisherName.trim();
+
+    if (!imprintName || !publisherName) {
+      setError("掲載誌・レーベル名と出版社名を入力してください。");
+      return;
+    }
+
+    setIsAddingPublisher(true);
+    setError("");
+    const createResponse = await authorizedFetch("/api/admin/publishers", {
+      method: "POST",
+      body: JSON.stringify({ imprintName, publisherName }),
+    });
+
+    if (createResponse.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!createResponse.ok && createResponse.status !== 409) {
+      setError("出版社・掲載誌を作成できませんでした。");
+      setIsAddingPublisher(false);
+      return;
+    }
+
+    let publisher: ManagedPublisher | undefined;
+
+    if (createResponse.ok) {
+      const data = (await createResponse.json()) as {
+        publisher: ManagedPublisher;
+      };
+      publisher = data.publisher;
+    } else {
+      const params = new URLSearchParams({
+        q: `${publisherName} ${imprintName}`,
+        pageSize: "20",
+      });
+      const searchResponse = await authorizedFetch(
+        `/api/admin/publishers?${params}`,
+      );
+
+      if (!searchResponse.ok) {
+        setError("既存の出版社・掲載誌を取得できませんでした。");
+        setIsAddingPublisher(false);
+        return;
+      }
+
+      const data = (await searchResponse.json()) as PublishersResponse;
+      publisher = data.publishers.find(
+        (entry) =>
+          entry.imprintName === imprintName &&
+          entry.publisherName === publisherName,
+      );
+    }
+
+    if (!publisher) {
+      setError("追加する出版社・掲載誌を特定できませんでした。");
+      setIsAddingPublisher(false);
+      return;
+    }
+
+    await addPublisher(publisher);
+    setNewImprintName("");
+    setNewPublisherName("");
+  }
+
+  async function deletePublisher(publisher: ManagedSeriesPublisher) {
+    if (!selectedSeriesId) {
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `「${publisher.publisherName} / ${publisher.imprintName}」をこのシリーズから削除しますか？`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setDeletingPublisherId(publisher.publisherId);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/series/${selectedSeriesId}/publishers/${encodeURIComponent(
+        publisher.publisherId,
+      )}`,
+      { method: "DELETE" },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError("出版社・掲載誌を削除できませんでした。");
+      setDeletingPublisherId(null);
+      return;
+    }
+
+    await loadSeriesDetail(selectedSeriesId);
+    setDeletingPublisherId(null);
+  }
+
   async function moveItemDisplayOrder(
     groupItems: ManagedSeriesItem[],
     item: ManagedSeriesItem,
@@ -1657,6 +1870,167 @@ export function SeriesManagementConsole({
                           className="flex h-8 items-center gap-2 rounded-md border border-red-300 bg-white px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-40"
                         >
                           <Trash2 className="size-4" />
+                          削除
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </section>
+
+              <section className="mt-4 rounded-md border border-stone-200 bg-white p-3">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <h3 className="text-sm font-bold text-stone-900">
+                    出版社・掲載誌
+                  </h3>
+                  <span className="text-xs font-semibold text-stone-500">
+                    {publishers.length}件
+                  </span>
+                </div>
+                <div className="mt-3">
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold text-stone-500">
+                      追加する出版社名または掲載誌名で検索
+                    </span>
+                    <div className="relative">
+                      <Search className="absolute left-3 top-2.5 size-4 text-stone-400" />
+                      <input
+                        value={publisherSearchText}
+                        onChange={(event) =>
+                          setPublisherSearchText(event.target.value)
+                        }
+                        placeholder="出版社名・掲載誌名で検索"
+                        className="h-9 w-full rounded-md border border-stone-300 pl-9 pr-3 text-sm outline-none focus:border-cyan-700"
+                      />
+                    </div>
+                  </label>
+                  {isSearchingPublishers ? (
+                    <p className="mt-2 flex items-center gap-2 text-xs font-semibold text-stone-500">
+                      <LoaderCircle className="size-4 animate-spin" />
+                      検索中...
+                    </p>
+                  ) : null}
+                  {publisherSearchText.trim() &&
+                  publisherSearchResults.length === 0 &&
+                  !isSearchingPublishers ? (
+                    <p className="mt-2 rounded-md bg-stone-50 px-3 py-2 text-xs text-stone-500">
+                      一致する出版社・掲載誌が見つかりません。下の入力欄から新規追加できます。
+                    </p>
+                  ) : null}
+                  {publisherSearchResults.length > 0 ? (
+                    <div className="mt-2 grid gap-2 sm:grid-cols-2">
+                      {publisherSearchResults.map((publisher) => {
+                        const isLinked = publishers.some(
+                          (entry) =>
+                            entry.publisherId === publisher.publisherId,
+                        );
+
+                        return (
+                          <div
+                            key={publisher.publisherId}
+                            className="flex items-center justify-between gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2"
+                          >
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-bold text-stone-900">
+                                {publisher.imprintName}
+                              </p>
+                              <p className="truncate text-[11px] text-stone-500">
+                                出版社: {publisher.publisherName}
+                              </p>
+                            </div>
+                            <button
+                              type="button"
+                              disabled={isAddingPublisher || isLinked}
+                              onClick={() => void addPublisher(publisher)}
+                              className="flex h-8 shrink-0 items-center gap-2 rounded-md bg-stone-900 px-3 text-xs font-bold text-white hover:bg-stone-800 disabled:opacity-40"
+                            >
+                              {isAddingPublisher ? (
+                                <LoaderCircle className="size-4 animate-spin" />
+                              ) : (
+                                <Plus className="size-4" />
+                              )}
+                              {isLinked ? "追加済み" : "追加"}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  ) : null}
+                </div>
+                <form
+                  className="mt-3 grid gap-2 rounded-md border border-stone-200 bg-stone-50 p-3 sm:grid-cols-[1fr_1fr_auto]"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    void createAndAddPublisher();
+                  }}
+                >
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold text-stone-500">
+                      掲載誌・レーベル
+                    </span>
+                    <input
+                      value={newImprintName}
+                      onChange={(event) => setNewImprintName(event.target.value)}
+                      placeholder="週刊少年ジャンプ"
+                      className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="text-[11px] font-semibold text-stone-500">
+                      出版社
+                    </span>
+                    <input
+                      value={newPublisherName}
+                      onChange={(event) =>
+                        setNewPublisherName(event.target.value)
+                      }
+                      placeholder="集英社"
+                      className="h-9 rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+                    />
+                  </label>
+                  <button
+                    type="submit"
+                    disabled={isAddingPublisher}
+                    className="flex h-9 items-center justify-center gap-2 self-end rounded-md bg-cyan-700 px-4 text-xs font-bold text-white hover:bg-cyan-800 disabled:opacity-40"
+                  >
+                    {isAddingPublisher ? (
+                      <LoaderCircle className="size-4 animate-spin" />
+                    ) : (
+                      <Plus className="size-4" />
+                    )}
+                    新規追加
+                  </button>
+                </form>
+                {publishers.length === 0 ? (
+                  <p className="mt-3 rounded-md bg-stone-50 px-3 py-4 text-center text-sm text-stone-500">
+                    このシリーズには出版社・掲載誌が設定されていません
+                  </p>
+                ) : (
+                  <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                    {publishers.map((publisher) => (
+                      <div
+                        key={publisher.publisherId}
+                        className="flex items-center justify-between gap-2 rounded-md border border-stone-200 bg-stone-50 p-2"
+                      >
+                        <div className="min-w-0">
+                          <p className="truncate text-sm font-bold text-stone-900">
+                            {publisher.imprintName}
+                          </p>
+                          <p className="truncate text-[11px] text-stone-500">
+                            出版社: {publisher.publisherName}
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          disabled={deletingPublisherId !== null}
+                          onClick={() => void deletePublisher(publisher)}
+                          className="flex h-8 shrink-0 items-center gap-2 rounded-md border border-red-300 bg-white px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-40"
+                        >
+                          {deletingPublisherId === publisher.publisherId ? (
+                            <LoaderCircle className="size-4 animate-spin" />
+                          ) : (
+                            <Trash2 className="size-4" />
+                          )}
                           削除
                         </button>
                       </div>

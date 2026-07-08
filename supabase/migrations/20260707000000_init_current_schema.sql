@@ -182,7 +182,8 @@ create table if not exists public.openbd_manga_items (
 
 create table if not exists public.publishers (
   id uuid default gen_random_uuid() not null,
-  name text not null
+  imprint_name text not null,
+  publisher_name text not null
 );
 
 create table if not exists public.rakuten_import_genres (
@@ -319,7 +320,7 @@ alter table public.openbd_manga_items
   add constraint openbd_manga_items_pkey PRIMARY KEY (isbn);
 
 alter table public.publishers
-  add constraint publishers_name_key UNIQUE (name);
+  add constraint publishers_imprint_name_publisher_name_key UNIQUE (imprint_name, publisher_name);
 
 alter table public.publishers
   add constraint publishers_pkey PRIMARY KEY (id);
@@ -418,6 +419,10 @@ CREATE INDEX IF NOT EXISTS series_publishers_publisher_id_idx ON public.series_p
 
 CREATE INDEX IF NOT EXISTS openbd_manga_items_normalized_title_idx ON public.openbd_manga_items USING btree (normalized_title);
 
+CREATE INDEX IF NOT EXISTS publishers_imprint_name_idx ON public.publishers USING btree (imprint_name);
+
+CREATE INDEX IF NOT EXISTS publishers_publisher_name_idx ON public.publishers USING btree (publisher_name);
+
 CREATE INDEX IF NOT EXISTS rakuten_import_genres_daily_pending_idx ON public.rakuten_import_genres USING btree (is_leaf, daily_cycle_date, genre_id);
 
 CREATE INDEX IF NOT EXISTS rakuten_import_genres_pending_discovery_idx ON public.rakuten_import_genres USING btree (children_discovered_at, genre_id);
@@ -508,31 +513,56 @@ grant select on table public.publishers to anon, authenticated;
 
 with parsed_publishers as (
   select distinct
-    btrim(token.value) as publisher_name
+    btrim(imprint_token.value) as imprint_name,
+    btrim(publisher_token.value) as publisher_name
   from public.wiki_manga_series as wiki
+  cross join lateral regexp_split_to_table(
+    coalesce(wiki.imprint, ''),
+    '[,' || chr(12289) || chr(65292) || ']'
+  ) as imprint_token(value)
   cross join lateral regexp_split_to_table(
     coalesce(wiki.publisher, ''),
     '[,' || chr(12289) || chr(65292) || ']'
-  ) as token(value)
-  where btrim(token.value) <> ''
+  ) as publisher_token(value)
+  where wiki.imprint is not null
+    and wiki.publisher is not null
+    and btrim(wiki.imprint) <> ''
+    and btrim(wiki.publisher) <> ''
+    and btrim(imprint_token.value) <> ''
+    and btrim(publisher_token.value) <> ''
 )
-insert into public.publishers (name)
-select publisher_name
+insert into public.publishers (
+  imprint_name,
+  publisher_name
+)
+select
+  imprint_name,
+  publisher_name
 from parsed_publishers
-on conflict (name) do nothing;
+on conflict (imprint_name, publisher_name) do nothing;
 
 with parsed_series_publishers as (
   select distinct
     wiki.id as series_id,
-    btrim(token.value) as publisher_name
+    btrim(imprint_token.value) as imprint_name,
+    btrim(publisher_token.value) as publisher_name
   from public.wiki_manga_series as wiki
   join public.series as series
     on series.id = wiki.id
   cross join lateral regexp_split_to_table(
+    coalesce(wiki.imprint, ''),
+    '[,' || chr(12289) || chr(65292) || ']'
+  ) as imprint_token(value)
+  cross join lateral regexp_split_to_table(
     coalesce(wiki.publisher, ''),
     '[,' || chr(12289) || chr(65292) || ']'
-  ) as token(value)
-  where btrim(token.value) <> ''
+  ) as publisher_token(value)
+  where wiki.imprint is not null
+    and wiki.publisher is not null
+    and btrim(wiki.imprint) <> ''
+    and btrim(wiki.publisher) <> ''
+    and btrim(imprint_token.value) <> ''
+    and btrim(publisher_token.value) <> ''
 )
 insert into public.series_publishers (
   series_id,
@@ -543,7 +573,8 @@ select
   publisher.id
 from parsed_series_publishers as parsed
 join public.publishers as publisher
-  on publisher.name = parsed.publisher_name
+  on publisher.imprint_name = parsed.imprint_name
+ and publisher.publisher_name = parsed.publisher_name
 on conflict (series_id, publisher_id) do nothing;
 
 CREATE OR REPLACE FUNCTION public.acquire_rakuten_import_lock(p_lock_name text, p_ttl_seconds integer)

@@ -43,10 +43,18 @@ export type ManagedSeriesGenre = {
   genreName: string | null;
 };
 
+export type ManagedSeriesPublisher = {
+  publisherId: string;
+  imprintName: string;
+  publisherName: string;
+};
+
 export type ManagedGenre = {
   genreId: string;
   genreName: string;
 };
+
+export type ManagedPublisher = ManagedSeriesPublisher;
 
 export type ManagedAgent = {
   id: string;

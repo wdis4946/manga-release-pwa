@@ -76,6 +76,45 @@ export async function GET(request: Request, context: RouteContext) {
     }
   }
 
+  const { data: publisherLinks, error: publisherLinksError } = await supabase
+    .from("series_publishers")
+    .select("publisher_id")
+    .eq("series_id", id)
+    .order("publisher_id", { ascending: true });
+
+  if (publisherLinksError) {
+    return Response.json(
+      { error: publisherLinksError.message },
+      { status: 500 },
+    );
+  }
+
+  const publisherIds = (publisherLinks ?? []).map(
+    (publisher) => publisher.publisher_id,
+  );
+  const publishersById = new Map<
+    string,
+    { id: string; imprint_name: string; publisher_name: string }
+  >();
+
+  if (publisherIds.length > 0) {
+    const { data: publisherRows, error: publisherRowsError } = await supabase
+      .from("publishers")
+      .select("id, imprint_name, publisher_name")
+      .in("id", publisherIds);
+
+    if (publisherRowsError) {
+      return Response.json(
+        { error: publisherRowsError.message },
+        { status: 500 },
+      );
+    }
+
+    for (const publisher of publisherRows ?? []) {
+      publishersById.set(publisher.id, publisher);
+    }
+  }
+
   const { data: seriesAgentLinks, error: seriesAgentLinksError } =
     await supabase
       .from("series_agents")
@@ -236,6 +275,19 @@ export async function GET(request: Request, context: RouteContext) {
       genreId: genre.genre_id,
       genreName: genreNamesById.get(genre.genre_id) ?? null,
     })),
+    publishers: (publisherLinks ?? [])
+      .map((publisher) => {
+        const publisherRow = publishersById.get(publisher.publisher_id);
+
+        return publisherRow
+          ? {
+              publisherId: publisher.publisher_id,
+              imprintName: publisherRow.imprint_name,
+              publisherName: publisherRow.publisher_name,
+            }
+          : null;
+      })
+      .filter((publisher) => publisher !== null),
     agents: responseAgents,
     items: linkedItems,
   });
