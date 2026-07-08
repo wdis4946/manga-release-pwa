@@ -103,7 +103,9 @@ export function SeriesManagementConsole({
   const [agents, setAgents] = useState<ManagedSeriesAgent[]>([]);
   const [items, setItems] = useState<ManagedSeriesItem[]>([]);
   const [queryText, setQueryText] = useState(initialQuery);
-  const [excludeEmptySeries, setExcludeEmptySeries] = useState(false);
+  const [imprintFilterText, setImprintFilterText] = useState("");
+  const [publisherFilterText, setPublisherFilterText] = useState("");
+  const [agentFilterText, setAgentFilterText] = useState("");
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
@@ -270,8 +272,16 @@ export function SeriesManagementConsole({
       params.set("q", queryText.trim());
     }
 
-    if (excludeEmptySeries) {
-      params.set("excludeEmpty", "true");
+    if (imprintFilterText.trim()) {
+      params.set("imprint", imprintFilterText.trim());
+    }
+
+    if (publisherFilterText.trim()) {
+      params.set("publisher", publisherFilterText.trim());
+    }
+
+    if (agentFilterText.trim()) {
+      params.set("agent", agentFilterText.trim());
     }
 
     const response = await authorizedFetch(`/api/admin/series?${params}`);
@@ -307,9 +317,11 @@ export function SeriesManagementConsole({
   }, [
     accessToken,
     authorizedFetch,
-    excludeEmptySeries,
+    agentFilterText,
     handleUnauthorized,
+    imprintFilterText,
     page,
+    publisherFilterText,
     queryText,
   ]);
 
@@ -525,7 +537,7 @@ export function SeriesManagementConsole({
 
   useEffect(() => {
     seriesRequestIdRef.current += 1;
-  }, [excludeEmptySeries, page, queryText]);
+  }, [agentFilterText, imprintFilterText, page, publisherFilterText, queryText]);
 
   useEffect(() => {
     detailRequestIdRef.current += 1;
@@ -1690,23 +1702,43 @@ export function SeriesManagementConsole({
               <Search className="absolute left-3 top-2.5 size-4 text-stone-400" />
               <input
                 value={queryText}
-                onChange={(event) => setQueryText(event.target.value)}
+                onChange={(event) => {
+                  setPage(1);
+                  setQueryText(event.target.value);
+                }}
                 placeholder="シリーズ名で検索"
                 className="h-9 w-full rounded-md border border-stone-300 pl-9 pr-3 text-sm outline-none focus:border-cyan-700"
               />
             </div>
-            <label className="mt-3 flex items-center gap-2 text-xs font-semibold text-stone-700">
+            <div className="mt-3 grid gap-2">
               <input
-                type="checkbox"
-                checked={excludeEmptySeries}
+                value={imprintFilterText}
                 onChange={(event) => {
                   setPage(1);
-                  setExcludeEmptySeries(event.target.checked);
+                  setImprintFilterText(event.target.value);
                 }}
-                className="size-4 accent-cyan-700"
+                placeholder="掲載雑誌で絞り込み"
+                className="h-9 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
               />
-              アイテム未紐づきのシリーズを除外
-            </label>
+              <input
+                value={publisherFilterText}
+                onChange={(event) => {
+                  setPage(1);
+                  setPublisherFilterText(event.target.value);
+                }}
+                placeholder="出版社で絞り込み"
+                className="h-9 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+              />
+              <input
+                value={agentFilterText}
+                onChange={(event) => {
+                  setPage(1);
+                  setAgentFilterText(event.target.value);
+                }}
+                placeholder="作者で絞り込み"
+                className="h-9 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+              />
+            </div>
           </form>
 
           <div className="max-h-[60vh] overflow-y-auto xl:max-h-[calc(100vh-227px)]">
