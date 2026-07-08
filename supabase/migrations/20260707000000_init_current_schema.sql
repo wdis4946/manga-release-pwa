@@ -1771,18 +1771,40 @@ begin
     raise exception 'Category number already exists.';
   end if;
 
-  update public.series_categories
-  set
-    category_number = p_new_category_number,
-    category_name = btrim(p_category_name),
-    updated_at = now()
-  where series_id = p_series_id
-    and category_number = p_category_number;
+  if p_category_number = p_new_category_number then
+    update public.series_categories
+    set
+      category_name = btrim(p_category_name),
+      updated_at = now()
+    where series_id = p_series_id
+      and category_number = p_category_number;
+
+    return true;
+  end if;
+
+  insert into public.series_categories (
+    series_id,
+    category_number,
+    category_name,
+    created_at,
+    updated_at
+  )
+  values (
+    p_series_id,
+    p_new_category_number,
+    btrim(p_category_name),
+    v_existing.created_at,
+    now()
+  );
 
   update public.series_items
   set
     category_number = p_new_category_number,
     updated_at = now()
+  where series_id = p_series_id
+    and category_number = p_category_number;
+
+  delete from public.series_categories
   where series_id = p_series_id
     and category_number = p_category_number;
 
