@@ -235,7 +235,10 @@ export function MangaMatchingConsole() {
     });
 
     if (!response.ok) {
-      setError("シリーズへ紐づけできませんでした。");
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      setError(data.error ?? "シリーズへ紐づけできませんでした。");
       setIsMutating(false);
       setLinkingSeriesId(null);
       return;
@@ -322,7 +325,10 @@ export function MangaMatchingConsole() {
     );
 
     if (!createResponse.ok) {
-      setError("シリーズを作成できませんでした。");
+      const data = (await createResponse.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      setError(data.error ?? "シリーズを作成できませんでした。");
       setIsMutating(false);
       return;
     }

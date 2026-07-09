@@ -66,18 +66,92 @@ export async function POST(request: Request) {
     targetIsbns = (groupIssues ?? []).map((row) => row.isbn);
   }
 
-  const { data: linkedCount, error: linkError } = await supabase.rpc(
-    "manual_link_manga_items",
-    {
-      p_isbns: targetIsbns,
-      p_series_id: body.seriesId,
-      p_user_id: user.id,
-    },
-  );
+  const { error: categoryError } = await supabase
+    .from("series_categories")
+    .upsert(
+      {
+        series_id: body.seriesId,
+        category_number: 0,
+        category_name: "default",
+      },
+      {
+        ignoreDuplicates: true,
+        onConflict: "series_id,category_number",
+      },
+    );
+
+  if (categoryError) {
+    console.error("[Admin matching] Failed to ensure default category.", {
+      seriesId: body.seriesId,
+      error: categoryError,
+    });
+
+    return Response.json({ error: categoryError.message }, { status: 500 });
+  }
+
+  const { data: lastItem, error: lastItemError } = await supabase
+    .from("series_items")
+    .select("display_order")
+    .eq("series_id", body.seriesId)
+    .eq("category_number", 0)
+    .order("display_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (lastItemError) {
+    return Response.json({ error: lastItemError.message }, { status: 500 });
+  }
+
+  const matchedAt = new Date().toISOString();
+  const firstDisplayOrder = (lastItem?.display_order ?? -1) + 1;
+  const rows = targetIsbns.map((isbn, index) => ({
+    isbn,
+    series_id: body.seriesId,
+    match_method: "manual",
+    matched_by: user.id,
+    matched_at: matchedAt,
+    category_number: 0,
+    display_order: firstDisplayOrder + index,
+    updated_at: matchedAt,
+  }));
+
+  const { data: linkedItems, error: linkError } = await supabase
+    .from("series_items")
+    .upsert(rows, { onConflict: "isbn" })
+    .select("isbn");
 
   if (linkError) {
+    console.error("[Admin matching] Failed to link items.", {
+      seriesId: body.seriesId,
+      isbns: targetIsbns,
+      error: linkError,
+    });
+
     return Response.json({ error: linkError.message }, { status: 500 });
   }
 
-  return Response.json({ ok: true, linkedCount: linkedCount ?? 0 });
+  const linkedIsbns = (linkedItems ?? []).map((item) => item.isbn);
+
+  if (linkedIsbns.length > 0) {
+    const { error: issueError } = await supabase
+      .from("series_item_match_issues")
+      .update({
+        is_resolved: true,
+        resolved_by: user.id,
+        resolved_at: matchedAt,
+        resolution_type: "linked",
+        updated_at: matchedAt,
+      })
+      .in("isbn", linkedIsbns);
+
+    if (issueError) {
+      console.error("[Admin matching] Failed to resolve linked issues.", {
+        seriesId: body.seriesId,
+        isbns: linkedIsbns,
+        error: issueError,
+      });
+    }
+  }
+
+  return Response.json({ ok: true, linkedCount: linkedIsbns.length });
 }
