@@ -6,7 +6,8 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "series-summary:batch": "node scripts/openai-series-summaries.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.108.2",
