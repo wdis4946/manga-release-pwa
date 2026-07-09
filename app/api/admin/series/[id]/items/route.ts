@@ -84,14 +84,74 @@ export async function POST(request: Request, context: RouteContext) {
     return Response.json({ error: "No ISBNs were provided." }, { status: 400 });
   }
 
-  const { data, error } = await createSupabaseAdminClient().rpc(
-    "manual_link_manga_items",
-    {
-      p_isbns: isbns,
-      p_series_id: id,
-      p_user_id: user.id,
-    },
-  );
+  const supabase = createSupabaseAdminClient();
+  const { data: series, error: seriesError } = await supabase
+    .from("series")
+    .select("id")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (seriesError) {
+    return Response.json({ error: seriesError.message }, { status: 500 });
+  }
+
+  if (!series) {
+    return Response.json({ error: "Series not found." }, { status: 404 });
+  }
+
+  const { error: categoryError } = await supabase
+    .from("series_categories")
+    .upsert(
+      {
+        series_id: id,
+        category_number: 0,
+        category_name: "default",
+      },
+      {
+        ignoreDuplicates: true,
+        onConflict: "series_id,category_number",
+      },
+    );
+
+  if (categoryError) {
+    console.error("[Admin series] Failed to ensure default category.", {
+      seriesId: id,
+      error: categoryError,
+    });
+
+    return Response.json({ error: categoryError.message }, { status: 500 });
+  }
+
+  const { data: lastItem, error: lastItemError } = await supabase
+    .from("series_items")
+    .select("display_order")
+    .eq("series_id", id)
+    .eq("category_number", 0)
+    .order("display_order", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+
+  if (lastItemError) {
+    return Response.json({ error: lastItemError.message }, { status: 500 });
+  }
+
+  const matchedAt = new Date().toISOString();
+  const firstDisplayOrder = (lastItem?.display_order ?? -1) + 1;
+  const rows = isbns.map((isbn, index) => ({
+    isbn,
+    series_id: id,
+    match_method: "manual",
+    matched_by: user.id,
+    matched_at: matchedAt,
+    category_number: 0,
+    display_order: firstDisplayOrder + index,
+    updated_at: matchedAt,
+  }));
+
+  const { data, error } = await supabase
+    .from("series_items")
+    .upsert(rows, { onConflict: "isbn" })
+    .select("isbn");
 
   if (error) {
     console.error("[Admin series] Failed to link item.", {
@@ -103,10 +163,33 @@ export async function POST(request: Request, context: RouteContext) {
     return Response.json({ error: error.message }, { status: 500 });
   }
 
+  const linkedIsbns = (data ?? []).map((item) => item.isbn);
+
+  if (linkedIsbns.length > 0) {
+    const { error: issueError } = await supabase
+      .from("series_item_match_issues")
+      .update({
+        is_resolved: true,
+        resolved_by: user.id,
+        resolved_at: matchedAt,
+        resolution_type: "linked",
+        updated_at: matchedAt,
+      })
+      .in("isbn", linkedIsbns);
+
+    if (issueError) {
+      console.error("[Admin series] Failed to resolve linked item issues.", {
+        seriesId: id,
+        isbns: linkedIsbns,
+        error: issueError,
+      });
+    }
+  }
+
   return Response.json({
     ok: true,
     requestedCount: isbns.length,
-    linkedCount: data ?? 0,
+    linkedCount: linkedIsbns.length,
   });
 }
 

@@ -29,6 +29,21 @@ function getImageExtension(file: File) {
   }
 }
 
+function formatStorageTimestamp(date: Date) {
+  const pad = (value: number, length = 2) =>
+    value.toString().padStart(length, "0");
+
+  return [
+    date.getUTCFullYear(),
+    pad(date.getUTCMonth() + 1),
+    pad(date.getUTCDate()),
+    pad(date.getUTCHours()),
+    pad(date.getUTCMinutes()),
+    pad(date.getUTCSeconds()),
+    pad(date.getUTCMilliseconds(), 3),
+  ].join("");
+}
+
 function getPublicUrl(path: string) {
   return createSupabaseAdminClient().storage
     .from(BUCKET_NAME)
@@ -85,12 +100,14 @@ export async function POST(request: Request, context: RouteContext) {
     return Response.json({ error: "Series not found." }, { status: 404 });
   }
 
-  const path = `series/${id}/cover.${extension}`;
+  const uploadedAt = new Date();
+  const path = `series/${id}/${id}-${formatStorageTimestamp(uploadedAt)}.${extension}`;
   const { error: uploadError } = await supabase.storage
     .from(BUCKET_NAME)
     .upload(path, file, {
-      upsert: true,
+      upsert: false,
       contentType: file.type,
+      cacheControl: "31536000",
     });
 
   if (uploadError) {
@@ -107,7 +124,7 @@ export async function POST(request: Request, context: RouteContext) {
     .from("series")
     .update({
       representative_image_path: path,
-      updated_at: new Date().toISOString(),
+      updated_at: uploadedAt.toISOString(),
     })
     .eq("id", id)
     .select("representative_image_path")

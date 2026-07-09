@@ -734,7 +734,10 @@ export function SeriesManagementConsole({
     }
 
     if (!response.ok) {
-      setError("アイテムを紐づけできませんでした。");
+      const data = (await response.json().catch(() => ({}))) as {
+        error?: string;
+      };
+      setError(data.error ?? "アイテムを紐づけできませんでした。");
       setIsLinkingItem(false);
       return;
     }
