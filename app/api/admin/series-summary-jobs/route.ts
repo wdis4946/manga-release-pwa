@@ -636,7 +636,7 @@ async function createSeriesSummary({
           "作品紹介ページに掲載できるような自然なあらすじを作成してください。",
           "日本語で作成してください。",
           "400字程度で作成してください。",
-          "3〜4段落に分け、適度に改行を入れてください。",
+          "3〜4段落に分け、段落間に空行を入れず、改行は1つだけにしてください。",
           "作品名、作者、ジャンル感、主人公、舞台、導入、見どころを自然に含めてください。",
           "結末や重大なネタバレは避けてください。",
           "参考情報にない設定や固有名詞を勝手に追加しないでください。",
@@ -686,17 +686,59 @@ async function createSeriesSummary({
       },
     },
   };
-  const response = await openAIRequest("/responses", {
-    method: "POST",
-    json: body,
-  });
+  let response;
+
+  try {
+    response = await openAIRequest("/responses", {
+      method: "POST",
+      json: body,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    if (model !== DEFAULT_MODEL && shouldFallbackToDefaultModel(message)) {
+      return createSeriesSummary({
+        series,
+        context,
+        model: DEFAULT_MODEL,
+        webSearchToolType,
+        retryForTooShort,
+      });
+    }
+
+    throw error;
+  }
   const outputText = extractOutputText(response);
 
   if (!outputText) {
     throw new Error("No output text found.");
   }
 
-  return JSON.parse(outputText) as SummaryResult;
+  return normalizeSummaryResult(JSON.parse(outputText) as SummaryResult);
+}
+
+function shouldFallbackToDefaultModel(errorMessage: string) {
+  return (
+    errorMessage.includes("limited preview") ||
+    errorMessage.includes("not available on this account") ||
+    errorMessage.includes("model_not_found")
+  );
+}
+
+function normalizeSummaryResult(summary: SummaryResult) {
+  return {
+    ...summary,
+    summary: removeBlankLines(summary.summary),
+  };
+}
+
+function removeBlankLines(value: string) {
+  return value
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
 async function markJobCompleted({

@@ -463,7 +463,7 @@ function createBatchRequest(series, context, { model, webSearchToolType }) {
         "作品紹介ページに掲載できるような自然なあらすじを作成してください。",
         "日本語で作成してください。",
         "400字程度で作成してください。",
-        "3〜4段落に分け、適度に改行を入れてください。",
+        "3〜4段落に分け、段落間に空行を入れず、改行は1つだけにしてください。",
         "作品名、作者、ジャンル感、主人公、舞台、導入、見どころを自然に含めてください。",
         "結末や重大なネタバレは避けてください。",
         "参考情報にない設定や固有名詞を勝手に追加しないでください。",
@@ -569,7 +569,7 @@ function parseBatchOutputLine(line, lineNumber) {
     return {
       customId,
       error: null,
-      summary: JSON.parse(outputText),
+      summary: normalizeSummaryResult(JSON.parse(outputText)),
     };
   } catch (error) {
     return {
@@ -636,6 +636,22 @@ function validateSummary(summary, acceptLowConfidence) {
   }
 
   return null;
+}
+
+function normalizeSummaryResult(summary) {
+  return {
+    ...summary,
+    summary: removeBlankLines(summary.summary),
+  };
+}
+
+function removeBlankLines(value) {
+  return value
+    .replace(/\r\n/g, "\n")
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .join("\n");
 }
 
 async function uploadOpenAIFile(inputPath) {
