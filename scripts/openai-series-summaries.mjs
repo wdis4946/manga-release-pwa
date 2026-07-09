@@ -6,7 +6,7 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { basename, dirname, resolve } from "node:path";
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
-const DEFAULT_MODEL = "gpt-4.1";
+const DEFAULT_MODEL = "gpt-5.5";
 const DEFAULT_WEB_SEARCH_TOOL_TYPE = "web_search_preview";
 const DEFAULT_OUTPUT_DIR = "data/openai-series-summary-batches";
 const MIN_SUMMARY_LENGTH = 300;
@@ -470,8 +470,8 @@ function createBatchRequest(series, context, { model, webSearchToolType }) {
         "参考情報をそのままコピーせず、必ず言い換えて再構成してください。",
         "文体は漫画紹介文らしく、少しドラマチックにしてください。",
         "ただし煽りすぎず、落ち着いた紹介文にしてください。",
+        "ですます調を使わないでください。",
         "文末を「だ」「である」で終わらせないでください。",
-        "体言止めを多用しすぎないでください。",
         "「〜していく」「〜となる」「〜へ向かう」「〜が描かれる」「〜に巻き込まれていく」などを自然に使ってください。",
         "最後の段落は、その作品の魅力やジャンル感をまとめる締めにしてください。",
         "不明な情報は補完しないでください。",

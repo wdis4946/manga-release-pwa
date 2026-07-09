@@ -5,7 +5,7 @@ export const maxDuration = 180;
 export const runtime = "nodejs";
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
-const DEFAULT_MODEL = "gpt-4.1";
+const DEFAULT_MODEL = "gpt-5.5";
 const DEFAULT_WEB_SEARCH_TOOL_TYPE = "web_search_preview";
 const MAX_SUBMIT_LIMIT = 5000;
 

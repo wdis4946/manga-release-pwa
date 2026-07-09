@@ -5,7 +5,7 @@ export const maxDuration = 180;
 export const runtime = "nodejs";
 
 const OPENAI_API_BASE = "https://api.openai.com/v1";
-const DEFAULT_MODEL = "gpt-4.1";
+const DEFAULT_MODEL = "gpt-5.5";
 const DEFAULT_WEB_SEARCH_TOOL_TYPE = "web_search_preview";
 const MAX_ENQUEUE_LIMIT = 5000;
 const MAX_WORKER_LIMIT = 10;
@@ -241,16 +241,30 @@ async function runSummaryJobs(request: Request) {
     }
 
     try {
-      const summary = await createSeriesSummary({
+      let summary = await createSeriesSummary({
         series,
         context: context.get(series.id),
         model,
         webSearchToolType,
       });
-      const validationError = validateSummary(
+      let validationError = validateSummary(
         summary,
         body.acceptLowConfidence === true,
       );
+
+      if (validationError === "summary is too short") {
+        summary = await createSeriesSummary({
+          series,
+          context: context.get(series.id),
+          model,
+          webSearchToolType,
+          retryForTooShort: true,
+        });
+        validationError = validateSummary(
+          summary,
+          body.acceptLowConfidence === true,
+        );
+      }
 
       if (validationError) {
         await markJobNeedsReview({
@@ -602,11 +616,13 @@ async function createSeriesSummary({
   context,
   model,
   webSearchToolType,
+  retryForTooShort = false,
 }: {
   series: SeriesRow;
   context: SeriesContext | undefined;
   model: string;
   webSearchToolType: string;
+  retryForTooShort?: boolean;
 }) {
   const body = {
     model,
@@ -627,14 +643,19 @@ async function createSeriesSummary({
           "参考情報をそのままコピーせず、必ず言い換えて再構成してください。",
           "文体は漫画紹介文らしく、少しドラマチックにしてください。",
           "ただし煽りすぎず、落ち着いた紹介文にしてください。",
+          "ですます調を使わないでください。",
           "文末を「だ」「である」で終わらせないでください。",
-          "体言止めを多用しすぎないでください。",
           "「〜していく」「〜となる」「〜へ向かう」「〜が描かれる」「〜に巻き込まれていく」などを自然に使ってください。",
           "最後の段落は、その作品の魅力やジャンル感をまとめる締めにしてください。",
           "不明な情報は補完しないでください。",
           "同名作品などで特定できない場合や情報不足の場合は needs_review=true にしてください。",
           "確認に使った主要なURLを source_urls に入れてください。",
-        ].join("\n"),
+          retryForTooShort
+            ? "前回の出力が短すぎたため、情報を補完せず、確認できた範囲の見どころや導入を厚めにして400字程度まで自然に広げてください。"
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n"),
       },
       {
         role: "user",
