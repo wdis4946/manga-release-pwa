@@ -21,7 +21,7 @@ async function main() {
       await callJobsApi("enqueue", {
         limit: numberArg(args, "limit", 100),
         offset: numberArg(args, "offset", 0),
-        includeDescribed: Boolean(args["include-described"]),
+        includeUndescribed: Boolean(args["include-undescribed"]),
         includeImageSet: Boolean(args["include-image-set"]),
         maxAttempts: numberArg(args, "max-attempts", 3),
       }, args);
@@ -31,6 +31,16 @@ async function main() {
       break;
     case "status":
       await callJobsApi("status", {}, args);
+      break;
+    case "clear":
+      await callJobsApi(
+        "clear",
+        {
+          all: Boolean(args.all),
+          statuses: parseCsvArg(args.statuses),
+        },
+        args,
+      );
       break;
     case "help":
     case undefined:
@@ -153,6 +163,17 @@ function numberArg(args, name, defaultValue) {
   return numberValue;
 }
 
+function parseCsvArg(value) {
+  if (!value || value === true) {
+    return undefined;
+  }
+
+  return String(value)
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean);
+}
+
 function requiredEnv(name) {
   const value = process.env[name];
 
@@ -207,16 +228,18 @@ function sleep(ms) {
 
 function printHelp() {
   console.log(`Usage:
-  node scripts/series-summary-jobs.mjs enqueue [--limit 100] [--offset 0] [--include-described] [--include-image-set]
+  node scripts/series-summary-jobs.mjs enqueue [--limit 100] [--offset 0] [--include-undescribed] [--include-image-set]
   node scripts/series-summary-jobs.mjs run [--limit 1] [--repeat 1] [--interval-ms 60000] [--dry-run]
   node scripts/series-summary-jobs.mjs status
+  node scripts/series-summary-jobs.mjs clear [--statuses pending,processing] [--all]
 
 Options:
   --base-url URL              Default: ${DEFAULT_BASE_URL}
-  --include-described         Enqueue series that already have description.
+  --include-undescribed       Also enqueue series without description.
   --include-image-set         Enqueue series that already have representative_image_path.
   --accept-low-confidence     Accept low confidence summaries.
   --dry-run                   Store job result without updating series.description.
+  --all                       Clear all summary jobs, including completed history.
 
 Environment:
   CRON_SECRET is loaded from .env.local or .env.

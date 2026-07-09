@@ -208,16 +208,30 @@ Web search付きのあらすじ生成はBatchではなく、DBの `series_summar
 
 ### 2. 対象シリーズをジョブに積む
 
-代表画像が設定済みのシリーズは除外し、descriptionが入っていても対象にする場合:
+デフォルトでは、代表画像が未設定かつdescriptionが入っているシリーズを対象にします。
 
 ```powershell
-npm run series-summary:jobs -- enqueue --limit 5000 --include-described
+npm run series-summary:jobs -- enqueue --limit 5000
 ```
 
 意味:
 
-- `--include-described`: `series.description` が入っていても対象にする
-- `--include-image-set` を付けない: `series.representative_image_path` が入っているシリーズは除外する
+- デフォルト: `series.description` が入っているシリーズだけ対象にする
+- デフォルト: `series.representative_image_path` が入っているシリーズは除外する
+- `--include-undescribed`: descriptionが未設定のシリーズも含める
+- `--include-image-set`: 代表画像が設定済みのシリーズも含める
+
+積み直したい場合、未処理/処理中ジョブだけ削除:
+
+```powershell
+npm run series-summary:jobs -- clear
+```
+
+完了済みやレビュー対象も含めて全削除:
+
+```powershell
+npm run series-summary:jobs -- clear --all
+```
 
 ### 3. 手動で少しずつ処理する
 

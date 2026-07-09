@@ -87,8 +87,12 @@ export async function POST(request: Request) {
       return Response.json(await getSummaryJobStatus());
     }
 
+    if (mode === "clear") {
+      return Response.json(await clearSummaryJobs(request));
+    }
+
     return Response.json(
-      { ok: false, error: "mode must be enqueue, run, or status." },
+      { ok: false, error: "mode must be enqueue, run, status, or clear." },
       { status: 400 },
     );
   } catch (error) {
@@ -107,7 +111,7 @@ async function enqueueSummaryJobs(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     limit?: number;
     offset?: number;
-    includeDescribed?: boolean;
+    includeUndescribed?: boolean;
     includeImageSet?: boolean;
     maxAttempts?: number;
   };
@@ -119,7 +123,7 @@ async function enqueueSummaryJobs(request: Request) {
     supabase,
     limit,
     offset,
-    includeDescribed: body.includeDescribed === true,
+    includeUndescribed: body.includeUndescribed === true,
     includeImageSet: body.includeImageSet === true,
   });
   const jobs = seriesRows.map((series) => ({
@@ -143,8 +147,9 @@ async function enqueueSummaryJobs(request: Request) {
     mode: "enqueue",
     limit,
     offset,
-    includeDescribed: body.includeDescribed === true,
+    includeUndescribed: body.includeUndescribed === true,
     includeImageSet: body.includeImageSet === true,
+    defaultFilter: "description_present_and_representative_image_missing",
     targetCount: seriesRows.length,
     insertedCount,
     skippedExistingCount: seriesRows.length - insertedCount,
@@ -369,6 +374,47 @@ async function getSummaryJobStatus() {
   };
 }
 
+async function clearSummaryJobs(request: Request) {
+  const body = (await request.json().catch(() => ({}))) as {
+    all?: boolean;
+    statuses?: string[];
+  };
+  const allowedStatuses = [
+    "pending",
+    "processing",
+    "completed",
+    "needs_review",
+    "failed",
+  ];
+  const statuses = body.all
+    ? allowedStatuses
+    : body.statuses?.length
+      ? body.statuses.filter((status) => allowedStatuses.includes(status))
+      : ["pending", "processing"];
+
+  if (statuses.length === 0) {
+    throw new Error("No valid statuses were provided.");
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("series_summary_jobs")
+    .delete()
+    .in("status", statuses)
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+
+  return {
+    ok: true,
+    mode: "clear",
+    statuses,
+    deletedCount: data?.length ?? 0,
+  };
+}
+
 async function insertJobsIndividually(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   jobs: Array<{
@@ -400,13 +446,13 @@ async function fetchTargetSeries({
   supabase,
   limit,
   offset,
-  includeDescribed,
+  includeUndescribed,
   includeImageSet,
 }: {
   supabase: ReturnType<typeof createSupabaseAdminClient>;
   limit: number;
   offset: number;
-  includeDescribed: boolean;
+  includeUndescribed: boolean;
   includeImageSet: boolean;
 }) {
   let query = supabase
@@ -418,8 +464,8 @@ async function fetchTargetSeries({
     .order("id", { ascending: true })
     .range(offset, offset + limit - 1);
 
-  if (!includeDescribed) {
-    query = query.or("description.is.null,description.eq.");
+  if (!includeUndescribed) {
+    query = query.not("description", "is", null).neq("description", "");
   }
 
   if (!includeImageSet) {
