@@ -101,7 +101,7 @@ export async function POST(request: Request, context: RouteContext) {
   }
 
   const uploadedAt = new Date();
-  const path = `series/${id}/${id}-${formatStorageTimestamp(uploadedAt)}.${extension}`;
+  const path = `series/${id}/${formatStorageTimestamp(uploadedAt)}.${extension}`;
   const { error: uploadError } = await supabase.storage
     .from(BUCKET_NAME)
     .upload(path, file, {
