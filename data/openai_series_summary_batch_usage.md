@@ -198,6 +198,55 @@ Invoke-RestMethod `
   -Body $body
 ```
 
+## Server Queue Worker
+
+Web search付きのあらすじ生成はBatchではなく、DBの `series_summary_jobs` にジョブを積んで、サーバAPIを手動で繰り返し叩く方式を推奨します。
+
+### 1. マイグレーションを適用
+
+`supabase/migrations/20260710010000_create_series_summary_jobs.sql` をSupabaseに適用します。
+
+### 2. 対象シリーズをジョブに積む
+
+代表画像が設定済みのシリーズは除外し、descriptionが入っていても対象にする場合:
+
+```powershell
+npm run series-summary:jobs -- enqueue --limit 5000 --include-described
+```
+
+意味:
+
+- `--include-described`: `series.description` が入っていても対象にする
+- `--include-image-set` を付けない: `series.representative_image_path` が入っているシリーズは除外する
+
+### 3. 手動で少しずつ処理する
+
+1回で1件だけ処理:
+
+```powershell
+npm run series-summary:jobs -- run --limit 1
+```
+
+1分おきに10回実行:
+
+```powershell
+npm run series-summary:jobs -- run --limit 1 --repeat 10 --interval-ms 60000
+```
+
+DB反映せず、ジョブ結果だけ確認したい場合:
+
+```powershell
+npm run series-summary:jobs -- run --limit 1 --dry-run
+```
+
+### 4. 進捗確認
+
+```powershell
+npm run series-summary:jobs -- status
+```
+
+`completed` は `series.description` への反映まで終わった件数です。`needs_review` と `failed` は `series_summary_jobs` の `error_message` を確認してください。
+
 ### DBへ反映する
 
 ```powershell
