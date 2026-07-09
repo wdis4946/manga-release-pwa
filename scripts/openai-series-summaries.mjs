@@ -9,6 +9,7 @@ const OPENAI_API_BASE = "https://api.openai.com/v1";
 const DEFAULT_MODEL = "gpt-4.1";
 const DEFAULT_WEB_SEARCH_TOOL_TYPE = "web_search_preview";
 const DEFAULT_OUTPUT_DIR = "data/openai-series-summary-batches";
+const MIN_SUMMARY_LENGTH = 220;
 const SUMMARY_SCHEMA = {
   type: "object",
   properties: {
@@ -461,8 +462,13 @@ function createBatchRequest(series, context, { model, webSearchToolType }) {
         "必要に応じてWeb検索を使い、作品情報を確認してください。",
         "タイトルだけで断定せず、作者名・出版社・掲載誌・ジャンルと照合してください。",
         "公式サイト、出版社、信頼できる作品データベース、書店情報を優先してください。",
+        "あらすじは日本語で300文字前後を目安に、短すぎず読み応えのある紹介文にしてください。",
+        "構成は、冒頭に作品全体の要約、次に物語の始まり、続いて今後の展開を想像させる内容、最後に作品の魅力をまとめる流れにしてください。",
+        "段落は3〜5段落程度に分け、読みやすい改行を入れてください。",
+        "冒頭では、作品名、主要人物、ジャンルや題材が自然に分かるようにしてください。",
+        "中盤では、物語が動き出すきっかけや主人公が向き合う課題を説明してください。",
+        "終盤では、核心的な結末を明かさず、読者が先を読みたくなる余韻を残してください。",
         "調べた情報をそのまま写さず、自然な作品紹介として再構成してください。",
-        "適度に改行を入れてください。",
         "「だ」「である」で文末を終わらせないでください。",
         "体言止めを多用しすぎないでください。",
         "ネタバレしすぎないでください。",
@@ -615,7 +621,7 @@ function validateSummary(summary, acceptLowConfidence) {
     return "source_urls is empty";
   }
 
-  if (summary.summary.length < 80) {
+  if (summary.summary.length < MIN_SUMMARY_LENGTH) {
     return "summary is too short";
   }
 
