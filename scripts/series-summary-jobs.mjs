@@ -29,6 +29,19 @@ async function main() {
     case "run":
       await runRepeatedly(args);
       break;
+    case "collect-sources":
+      await callJobsApi("collect-sources", {
+        limit: numberArg(args, "limit", 10),
+        offset: numberArg(args, "offset", 0),
+        includeUndescribed: Boolean(args["include-undescribed"]),
+        includeImageSet: Boolean(args["include-image-set"]),
+        search: !Boolean(args["no-search"]),
+        refetch: Boolean(args.refetch),
+      }, args);
+      break;
+    case "import-source-urls":
+      await importSourceUrls(args);
+      break;
     case "status":
       await callJobsApi("status", {}, args);
       break;
@@ -63,6 +76,7 @@ async function runRepeatedly(args) {
         staleAfterMinutes: numberArg(args, "stale-after-minutes", 30),
         apply: !Boolean(args["dry-run"]),
         acceptLowConfidence: Boolean(args["accept-low-confidence"]),
+        allowWebSearchFallback: Boolean(args["allow-web-search-fallback"]),
       },
       args,
     );
@@ -116,6 +130,25 @@ async function callJobsApi(mode, body, args) {
   return parsed;
 }
 
+async function importSourceUrls(args) {
+  const input = args.input;
+
+  if (!input || input === true) {
+    throw new Error("--input is required.");
+  }
+
+  const groups = readSourceUrlCsv(String(input));
+
+  await callJobsApi(
+    "import-source-urls",
+    {
+      sources: groups,
+      fetch: Boolean(args.fetch),
+    },
+    args,
+  );
+}
+
 function parseArgs(args) {
   const parsed = {};
 
@@ -145,6 +178,77 @@ function parseArgs(args) {
   }
 
   return parsed;
+}
+
+function readSourceUrlCsv(path) {
+  const text = readFileSync(path, "utf8");
+  const [headerLine, ...lines] = text.split(/\r?\n/).filter(Boolean);
+  const headers = parseCsvLine(headerLine);
+  const seriesIdIndex = headers.indexOf("series_id");
+  const urlsIndex = headers.indexOf("source_urls");
+
+  if (seriesIdIndex === -1 || urlsIndex === -1) {
+    throw new Error("CSV must include series_id and source_urls columns.");
+  }
+
+  const groups = [];
+
+  for (const line of lines) {
+    const columns = parseCsvLine(line);
+    const seriesId = columns[seriesIdIndex];
+    const sourceUrls = columns[urlsIndex];
+
+    if (!seriesId || !sourceUrls) {
+      continue;
+    }
+
+    let urls;
+
+    try {
+      urls = JSON.parse(sourceUrls);
+    } catch {
+      continue;
+    }
+
+    if (Array.isArray(urls) && urls.length > 0) {
+      groups.push({ seriesId, urls });
+    }
+  }
+
+  return groups;
+}
+
+function parseCsvLine(line) {
+  const columns = [];
+  let current = "";
+  let quoted = false;
+
+  for (let index = 0; index < line.length; index += 1) {
+    const char = line[index];
+    const next = line[index + 1];
+
+    if (char === '"' && quoted && next === '"') {
+      current += '"';
+      index += 1;
+      continue;
+    }
+
+    if (char === '"') {
+      quoted = !quoted;
+      continue;
+    }
+
+    if (char === "," && !quoted) {
+      columns.push(current);
+      current = "";
+      continue;
+    }
+
+    current += char;
+  }
+
+  columns.push(current);
+  return columns;
 }
 
 function numberArg(args, name, defaultValue) {
@@ -229,6 +333,8 @@ function sleep(ms) {
 function printHelp() {
   console.log(`Usage:
   node scripts/series-summary-jobs.mjs enqueue [--limit 100] [--offset 0] [--include-undescribed] [--include-image-set]
+  node scripts/series-summary-jobs.mjs import-source-urls --input data/source-urls.csv [--fetch]
+  node scripts/series-summary-jobs.mjs collect-sources [--limit 10] [--offset 0] [--no-search] [--refetch]
   node scripts/series-summary-jobs.mjs run [--limit 1] [--repeat 1] [--interval-ms 60000] [--dry-run]
   node scripts/series-summary-jobs.mjs status
   node scripts/series-summary-jobs.mjs clear [--statuses pending,processing] [--all]
@@ -238,10 +344,15 @@ Options:
   --include-undescribed       Also enqueue series without description.
   --include-image-set         Enqueue series that already have representative_image_path.
   --accept-low-confidence     Accept low confidence summaries.
+  --allow-web-search-fallback Use OpenAI web search only when stored sources are missing.
+  --no-search                 collect-sources uses only stored pending URLs.
+  --refetch                   Fetch stored source URLs again.
+  --fetch                     import-source-urls fetches imported URLs immediately.
   --dry-run                   Store job result without updating series.description.
   --all                       Clear all summary jobs, including completed history.
 
 Environment:
   CRON_SECRET is loaded from .env.local or .env.
+  GOOGLE_SEARCH_API_KEY and GOOGLE_SEARCH_ENGINE_ID enable source collection search.
 `);
 }

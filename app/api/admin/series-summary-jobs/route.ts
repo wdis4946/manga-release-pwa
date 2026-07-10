@@ -9,6 +9,10 @@ const DEFAULT_MODEL = "gpt-5.5";
 const DEFAULT_WEB_SEARCH_TOOL_TYPE = "web_search_preview";
 const MAX_ENQUEUE_LIMIT = 5000;
 const MAX_WORKER_LIMIT = 10;
+const MAX_SOURCE_COLLECT_LIMIT = 50;
+const MAX_SOURCES_PER_SERIES = 8;
+const MAX_SOURCE_TEXT_LENGTH = 5000;
+const MAX_SOURCE_CONTEXT_LENGTH = 16000;
 const MIN_SUMMARY_LENGTH = 300;
 
 const SUMMARY_SCHEMA = {
@@ -56,6 +60,28 @@ type SeriesContext = {
   genres: string[];
 };
 
+type SeriesSummarySource = {
+  id: string;
+  series_id: string;
+  url: string;
+  domain: string;
+  source_type: SourceType;
+  title: string | null;
+  description: string | null;
+  extracted_text: string | null;
+  score: number;
+  status: "pending" | "fetched" | "failed" | "ignored";
+  error_message: string | null;
+};
+
+type SourceType =
+  | "publisher_official"
+  | "official_site"
+  | "bibliographic"
+  | "ebook_store"
+  | "reference_database"
+  | "other";
+
 type SummaryResult = {
   id: string;
   title: string;
@@ -84,6 +110,14 @@ export async function POST(request: Request) {
       return Response.json(await runSummaryJobs(request));
     }
 
+    if (mode === "collect-sources") {
+      return Response.json(await collectSummarySources(request));
+    }
+
+    if (mode === "import-source-urls") {
+      return Response.json(await importSummarySourceUrls(request));
+    }
+
     if (mode === "status") {
       return Response.json(await getSummaryJobStatus());
     }
@@ -93,7 +127,11 @@ export async function POST(request: Request) {
     }
 
     return Response.json(
-      { ok: false, error: "mode must be enqueue, run, status, or clear." },
+      {
+        ok: false,
+        error:
+          "mode must be enqueue, run, collect-sources, import-source-urls, status, or clear.",
+      },
       { status: 400 },
     );
   } catch (error) {
@@ -165,6 +203,7 @@ async function runSummaryJobs(request: Request) {
     webSearchToolType?: string;
     apply?: boolean;
     acceptLowConfidence?: boolean;
+    allowWebSearchFallback?: boolean;
   };
   const limit = clampPositiveInteger(body.limit ?? 1, MAX_WORKER_LIMIT);
   const staleAfterMinutes = clampPositiveInteger(
@@ -178,6 +217,9 @@ async function runSummaryJobs(request: Request) {
     body.webSearchToolType?.trim() ||
     process.env.OPENAI_WEB_SEARCH_TOOL_TYPE ||
     DEFAULT_WEB_SEARCH_TOOL_TYPE;
+  const allowWebSearchFallback =
+    body.allowWebSearchFallback === true ||
+    process.env.OPENAI_ALLOW_WEB_SEARCH_FALLBACK === "true";
   const supabase = createSupabaseAdminClient();
   const { data: claimedJobs, error: claimError } = await supabase.rpc(
     "claim_series_summary_jobs",
@@ -216,6 +258,10 @@ async function runSummaryJobs(request: Request) {
     supabase,
     seriesRows.map((series) => series.id),
   );
+  const sourcesBySeriesId = await fetchUsableSummarySources(
+    supabase,
+    seriesRows.map((series) => series.id),
+  );
   const results = [];
   let completedCount = 0;
   let needsReviewCount = 0;
@@ -244,8 +290,10 @@ async function runSummaryJobs(request: Request) {
       let summary = await createSeriesSummary({
         series,
         context: context.get(series.id),
+        sources: sourcesBySeriesId.get(series.id) ?? [],
         model,
         webSearchToolType,
+        allowWebSearch: allowWebSearchFallback,
       });
       let validationError = validateSummary(
         summary,
@@ -256,8 +304,10 @@ async function runSummaryJobs(request: Request) {
         summary = await createSeriesSummary({
           series,
           context: context.get(series.id),
+          sources: sourcesBySeriesId.get(series.id) ?? [],
           model,
           webSearchToolType,
+          allowWebSearch: allowWebSearchFallback,
           retryForTooShort: true,
         });
         validationError = validateSummary(
@@ -337,6 +387,7 @@ async function runSummaryJobs(request: Request) {
     mode: "run",
     model,
     webSearchToolType,
+    sourceMode: allowWebSearchFallback ? "stored_sources_or_web" : "stored_sources",
     apply,
     claimedCount: jobs.length,
     completedCount,
@@ -386,6 +437,170 @@ async function getSummaryJobStatus() {
     mode: "status",
     counts,
     recentProblemJobs: recentProblemJobs ?? [],
+  };
+}
+
+async function collectSummarySources(request: Request) {
+  const body = (await request.json().catch(() => ({}))) as {
+    limit?: number;
+    offset?: number;
+    includeUndescribed?: boolean;
+    includeImageSet?: boolean;
+    search?: boolean;
+    refetch?: boolean;
+  };
+  const limit = clampPositiveInteger(
+    body.limit ?? 10,
+    MAX_SOURCE_COLLECT_LIMIT,
+  );
+  const offset = Math.max(0, Math.floor(body.offset ?? 0));
+  const supabase = createSupabaseAdminClient();
+  const seriesRows = await fetchTargetSeries({
+    supabase,
+    limit,
+    offset,
+    includeUndescribed: body.includeUndescribed === true,
+    includeImageSet: body.includeImageSet === true,
+  });
+  const context = await fetchSeriesContext(
+    supabase,
+    seriesRows.map((series) => series.id),
+  );
+  const searchEnabled = body.search !== false && hasGoogleSearchConfig();
+  const results = [];
+  let discoveredUrlCount = 0;
+  let fetchedCount = 0;
+  let failedCount = 0;
+
+  for (const series of seriesRows) {
+    const existingSources = await fetchSummarySourcesForSeries(
+      supabase,
+      series.id,
+    );
+    const discoveredUrls = searchEnabled
+      ? await discoverSourceUrls(series, context.get(series.id))
+      : [];
+    const urls = uniqueStrings([
+      ...existingSources.map((source) => source.url),
+      ...discoveredUrls,
+    ]).slice(0, MAX_SOURCES_PER_SERIES);
+    const sourceResults = [];
+
+    discoveredUrlCount += discoveredUrls.length;
+
+    for (const url of urls) {
+      const existing = existingSources.find((source) => source.url === url);
+
+      if (
+        existing?.status === "fetched" &&
+        existing.extracted_text &&
+        body.refetch !== true
+      ) {
+        sourceResults.push({ url, status: "skipped" });
+        continue;
+      }
+
+      const source = await fetchAndStoreSummarySource({
+        supabase,
+        seriesId: series.id,
+        url,
+      });
+
+      if (source.status === "fetched") {
+        fetchedCount += 1;
+      } else if (source.status === "failed") {
+        failedCount += 1;
+      }
+
+      sourceResults.push({
+        url,
+        status: source.status,
+        sourceType: source.source_type,
+        score: source.score,
+      });
+    }
+
+    results.push({
+      seriesId: series.id,
+      title: series.display_title,
+      existingSourceCount: existingSources.length,
+      discoveredSourceCount: discoveredUrls.length,
+      processedSourceCount: sourceResults.length,
+      sources: sourceResults,
+    });
+  }
+
+  return {
+    ok: true,
+    mode: "collect-sources",
+    limit,
+    offset,
+    searchEnabled,
+    targetCount: seriesRows.length,
+    discoveredUrlCount,
+    fetchedCount,
+    failedCount,
+    results,
+    requiredSettings: searchEnabled
+      ? []
+      : ["GOOGLE_SEARCH_API_KEY", "GOOGLE_SEARCH_ENGINE_ID"],
+  };
+}
+
+async function importSummarySourceUrls(request: Request) {
+  const body = (await request.json().catch(() => ({}))) as {
+    sources?: Array<{ seriesId?: string; series_id?: string; urls?: string[] }>;
+    fetch?: boolean;
+  };
+  const supabase = createSupabaseAdminClient();
+  let insertedOrUpdatedCount = 0;
+  let fetchedCount = 0;
+  let failedCount = 0;
+
+  for (const sourceGroup of body.sources ?? []) {
+    const seriesId = sourceGroup.seriesId ?? sourceGroup.series_id;
+
+    if (!seriesId) {
+      continue;
+    }
+
+    for (const url of uniqueStrings(sourceGroup.urls ?? [])) {
+      const normalizedUrl = normalizeUrl(url);
+
+      if (!normalizedUrl) {
+        continue;
+      }
+
+      await upsertSummarySource({
+        supabase,
+        seriesId,
+        url: normalizedUrl,
+        status: "pending",
+      });
+      insertedOrUpdatedCount += 1;
+
+      if (body.fetch === true) {
+        const source = await fetchAndStoreSummarySource({
+          supabase,
+          seriesId,
+          url: normalizedUrl,
+        });
+
+        if (source.status === "fetched") {
+          fetchedCount += 1;
+        } else if (source.status === "failed") {
+          failedCount += 1;
+        }
+      }
+    }
+  }
+
+  return {
+    ok: true,
+    mode: "import-source-urls",
+    importedUrlCount: insertedOrUpdatedCount,
+    fetchedCount,
+    failedCount,
   };
 }
 
@@ -611,17 +826,657 @@ async function fetchSeriesContext(
   return context;
 }
 
+async function fetchUsableSummarySources(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  seriesIds: string[],
+) {
+  const sourcesBySeriesId = new Map<string, SeriesSummarySource[]>(
+    seriesIds.map((seriesId) => [seriesId, []]),
+  );
+
+  if (seriesIds.length === 0) {
+    return sourcesBySeriesId;
+  }
+
+  for (let index = 0; index < seriesIds.length; index += 200) {
+    const chunk = seriesIds.slice(index, index + 200);
+    const { data, error } = await supabase
+      .from("series_summary_sources")
+      .select(
+        "id, series_id, url, domain, source_type, title, description, extracted_text, score, status, error_message",
+      )
+      .in("series_id", chunk)
+      .eq("status", "fetched")
+      .not("extracted_text", "is", null)
+      .order("score", { ascending: false })
+      .order("id", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    for (const source of (data ?? []) as SeriesSummarySource[]) {
+      const sources = sourcesBySeriesId.get(source.series_id);
+
+      if (sources && sources.length < MAX_SOURCES_PER_SERIES) {
+        sources.push(source);
+      }
+    }
+  }
+
+  return sourcesBySeriesId;
+}
+
+async function fetchSummarySourcesForSeries(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  seriesId: string,
+) {
+  const { data, error } = await supabase
+    .from("series_summary_sources")
+    .select(
+      "id, series_id, url, domain, source_type, title, description, extracted_text, score, status, error_message",
+    )
+    .eq("series_id", seriesId)
+    .order("score", { ascending: false })
+    .order("id", { ascending: true });
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as SeriesSummarySource[];
+}
+
+async function discoverSourceUrls(
+  series: SeriesRow,
+  context: SeriesContext | undefined,
+) {
+  const title = series.display_title || series.search_title;
+  const author = context?.authors[0];
+  const publisher = context?.publishers[0];
+  const imprint = context?.imprints[0];
+  const baseTerms = uniqueStrings([
+    title,
+    series.search_title,
+    author,
+    publisher,
+    imprint,
+  ]).join(" ");
+  const siteDomains = preferredSourceDomains(context);
+  const queries = [
+    ...siteDomains.map((domain) => `${baseTerms} site:${domain}`),
+    `${baseTerms} 漫画 公式`,
+    `${baseTerms} 漫画 あらすじ`,
+  ];
+  const urls: string[] = [];
+
+  for (const query of queries) {
+    if (urls.length >= MAX_SOURCES_PER_SERIES) {
+      break;
+    }
+
+    const searchResults = await googleSearch(query);
+    urls.push(...searchResults);
+  }
+
+  return uniqueStrings(urls)
+    .map(normalizeUrl)
+    .filter((url): url is string => Boolean(url))
+    .sort((a, b) => scoreSourceUrl(b) - scoreSourceUrl(a))
+    .slice(0, MAX_SOURCES_PER_SERIES);
+}
+
+function preferredSourceDomains(context: SeriesContext | undefined) {
+  const domains = new Set<string>();
+  const joined = [
+    ...(context?.publishers ?? []),
+    ...(context?.imprints ?? []),
+  ].join(" ");
+
+  if (joined.includes("講談社")) {
+    domains.add("www.kodansha.co.jp");
+    domains.add("pocket.shonenmagazine.com");
+  }
+
+  if (joined.includes("KADOKAWA") || joined.includes("角川")) {
+    domains.add("www.kadokawa.co.jp");
+    domains.add("comic-walker.com");
+    domains.add("dragonage-comic.com");
+  }
+
+  if (joined.includes("秋田書店")) {
+    domains.add("www.akitashoten.co.jp");
+  }
+
+  if (joined.includes("小学館")) {
+    domains.add("www.shogakukan.co.jp");
+    domains.add("shogakukan-comic.jp");
+    domains.add("e-comi.shogakukan.co.jp");
+  }
+
+  if (joined.includes("集英社")) {
+    domains.add("www.shueisha.co.jp");
+    domains.add("books.shueisha.co.jp");
+    domains.add("shonenjumpplus.com");
+  }
+
+  if (joined.includes("スクウェア") || joined.includes("スクエニ")) {
+    domains.add("magazine.jp.square-enix.com");
+    domains.add("www.ganganonline.com");
+  }
+
+  for (const domain of [
+    "mangapedia.com",
+    "www.hanmoto.com",
+    "ndlsearch.ndl.go.jp",
+  ]) {
+    domains.add(domain);
+  }
+
+  return [...domains].slice(0, 8);
+}
+
+async function googleSearch(query: string) {
+  const apiKey = process.env.GOOGLE_SEARCH_API_KEY;
+  const searchEngineId = process.env.GOOGLE_SEARCH_ENGINE_ID;
+
+  if (!apiKey || !searchEngineId) {
+    return [];
+  }
+
+  const url = new URL("https://www.googleapis.com/customsearch/v1");
+  url.searchParams.set("key", apiKey);
+  url.searchParams.set("cx", searchEngineId);
+  url.searchParams.set("q", query);
+  url.searchParams.set("num", "5");
+  url.searchParams.set("lr", "lang_ja");
+
+  const response = await fetch(url, {
+    headers: { Accept: "application/json" },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Google Search failed: ${response.status}`);
+  }
+
+  const body = (await response.json()) as {
+    items?: Array<{ link?: string }>;
+  };
+
+  return (body.items ?? [])
+    .map((item) => item.link)
+    .filter((link): link is string => Boolean(link));
+}
+
+function hasGoogleSearchConfig() {
+  return Boolean(
+    process.env.GOOGLE_SEARCH_API_KEY && process.env.GOOGLE_SEARCH_ENGINE_ID,
+  );
+}
+
+async function fetchAndStoreSummarySource({
+  supabase,
+  seriesId,
+  url,
+}: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>;
+  seriesId: string;
+  url: string;
+}) {
+  try {
+    const fetched = await fetchSourceContent(url);
+    return upsertSummarySource({
+      supabase,
+      seriesId,
+      url,
+      status: "fetched",
+      title: fetched.title,
+      description: fetched.description,
+      extractedText: fetched.text,
+    });
+  } catch (error) {
+    return upsertSummarySource({
+      supabase,
+      seriesId,
+      url,
+      status: "failed",
+      errorMessage: error instanceof Error ? error.message : "Unknown error.",
+    });
+  }
+}
+
+async function upsertSummarySource({
+  supabase,
+  seriesId,
+  url,
+  status,
+  title = null,
+  description = null,
+  extractedText = null,
+  errorMessage = null,
+}: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>;
+  seriesId: string;
+  url: string;
+  status: "pending" | "fetched" | "failed" | "ignored";
+  title?: string | null;
+  description?: string | null;
+  extractedText?: string | null;
+  errorMessage?: string | null;
+}) {
+  const domain = domainFromUrl(url);
+  const sourceType = classifySourceUrl(url);
+  const { data, error } = await supabase
+    .from("series_summary_sources")
+    .upsert(
+      {
+        series_id: seriesId,
+        url,
+        domain,
+        source_type: sourceType,
+        title,
+        description,
+        extracted_text: extractedText,
+        score: scoreSourceUrl(url),
+        status,
+        error_message: errorMessage,
+        fetched_at: status === "fetched" ? new Date().toISOString() : null,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "series_id,url" },
+    )
+    .select(
+      "id, series_id, url, domain, source_type, title, description, extracted_text, score, status, error_message",
+    )
+    .single();
+
+  if (error) {
+    throw error;
+  }
+
+  return data as SeriesSummarySource;
+}
+
+async function fetchSourceContent(url: string) {
+  const response = await fetch(url, {
+    headers: {
+      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      "User-Agent":
+        "Mozilla/5.0 (compatible; MangaReleaseSummaryBot/1.0; +https://manga-release-pwa.vercel.app)",
+    },
+  });
+
+  if (!response.ok) {
+    throw new Error(`Fetch failed: ${response.status}`);
+  }
+
+  const contentType = response.headers.get("content-type") ?? "";
+
+  if (!contentType.includes("text/html")) {
+    throw new Error(`Unsupported content type: ${contentType || "unknown"}`);
+  }
+
+  const html = await response.text();
+  const title = decodeHtmlEntities(extractTagContent(html, "title") ?? "");
+  const description = decodeHtmlEntities(
+    extractMetaContent(html, "description") ??
+      extractMetaPropertyContent(html, "og:description") ??
+      "",
+  );
+  const text = extractReadableText(html);
+
+  if (text.length < 80 && !description) {
+    throw new Error("Extracted text is too short.");
+  }
+
+  return {
+    title: truncateText(title, 300),
+    description: truncateText(description, 1000),
+    text: truncateText(text || description, MAX_SOURCE_TEXT_LENGTH),
+  };
+}
+
+function extractReadableText(html: string) {
+  const mainHtml = extractLikelyMainHtml(html);
+  return decodeHtmlEntities(
+    mainHtml
+      .replace(/<script[\s\S]*?<\/script>/gi, " ")
+      .replace(/<style[\s\S]*?<\/style>/gi, " ")
+      .replace(/<noscript[\s\S]*?<\/noscript>/gi, " ")
+      .replace(/<!--[\s\S]*?-->/g, " ")
+      .replace(/<(br|p|div|li|h[1-6]|section|article)\b[^>]*>/gi, "\n")
+      .replace(/<[^>]+>/g, " ")
+      .replace(/[ \t\f\v]+/g, " ")
+      .replace(/\n[ \t]+/g, "\n")
+      .replace(/\n{3,}/g, "\n\n")
+      .trim(),
+  );
+}
+
+function extractLikelyMainHtml(html: string) {
+  const patterns = [
+    /<main\b[^>]*>([\s\S]*?)<\/main>/i,
+    /<article\b[^>]*>([\s\S]*?)<\/article>/i,
+    /<body\b[^>]*>([\s\S]*?)<\/body>/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = html.match(pattern);
+
+    if (match?.[1]) {
+      return match[1];
+    }
+  }
+
+  return html;
+}
+
+function extractTagContent(html: string, tagName: string) {
+  const pattern = new RegExp(`<${tagName}[^>]*>([\\s\\S]*?)<\\/${tagName}>`, "i");
+  return html.match(pattern)?.[1]?.trim() ?? null;
+}
+
+function extractMetaContent(html: string, name: string) {
+  const pattern = new RegExp(
+    `<meta[^>]+name=["']${escapeRegExp(name)}["'][^>]+content=["']([^"']*)["'][^>]*>`,
+    "i",
+  );
+  return html.match(pattern)?.[1]?.trim() ?? null;
+}
+
+function extractMetaPropertyContent(html: string, property: string) {
+  const pattern = new RegExp(
+    `<meta[^>]+property=["']${escapeRegExp(property)}["'][^>]+content=["']([^"']*)["'][^>]*>`,
+    "i",
+  );
+  return html.match(pattern)?.[1]?.trim() ?? null;
+}
+
+function classifySourceUrl(url: string): SourceType {
+  const domain = domainFromUrl(url);
+
+  if (
+    /kodansha|kadokawa|akitashoten|shogakukan|shueisha|square-enix|shinchosha|ichijinsha|shonengahosha|shonenjump|shonenmagazine|yanmaga|dragonage|s-manga|ganganonline/.test(
+      domain,
+    )
+  ) {
+    return "publisher_official";
+  }
+
+  if (/ndlsearch|hanmoto/.test(domain)) {
+    return "bibliographic";
+  }
+
+  if (
+    /sony|line|bookwalker|cmoa|docomo|rakuten|booklive|google|kinokuniya|mangazenkan|bookpass/.test(
+      domain,
+    )
+  ) {
+    return "ebook_store";
+  }
+
+  if (/mangapedia|mangaseek|wikipedia|alu/.test(domain)) {
+    return "reference_database";
+  }
+
+  if (/official|anime|classroom-crisis|ai-no-idenshi|btooom|lovechuchu/.test(domain)) {
+    return "official_site";
+  }
+
+  return "other";
+}
+
+function scoreSourceUrl(url: string) {
+  const sourceType = classifySourceUrl(url);
+  const baseScores: Record<SourceType, number> = {
+    publisher_official: 100,
+    official_site: 85,
+    bibliographic: 75,
+    ebook_store: 60,
+    reference_database: 45,
+    other: 20,
+  };
+
+  return baseScores[sourceType];
+}
+
+function formatSourceContext(sources: SeriesSummarySource[]) {
+  let remaining = MAX_SOURCE_CONTEXT_LENGTH;
+  const blocks = [];
+
+  for (const source of sources) {
+    if (remaining <= 0) {
+      break;
+    }
+
+    const text = truncateText(
+      [
+        source.title ? `title: ${source.title}` : null,
+        source.description ? `description: ${source.description}` : null,
+        source.extracted_text ? `text: ${source.extracted_text}` : null,
+      ]
+        .filter(Boolean)
+        .join("\n"),
+      Math.min(MAX_SOURCE_TEXT_LENGTH, remaining),
+    );
+
+    if (!text) {
+      continue;
+    }
+
+    const block = [
+      `url: ${source.url}`,
+      `source_type: ${source.source_type}`,
+      text,
+    ].join("\n");
+
+    blocks.push(block);
+    remaining -= block.length;
+  }
+
+  return blocks.length ? blocks.join("\n\n---\n\n") : "なし";
+}
+
+function normalizeUrl(url: string) {
+  try {
+    const parsed = new URL(url.trim());
+
+    if (!["http:", "https:"].includes(parsed.protocol)) {
+      return null;
+    }
+
+    parsed.hash = "";
+    return parsed.toString();
+  } catch {
+    return null;
+  }
+}
+
+function domainFromUrl(url: string) {
+  try {
+    return new URL(url).hostname.toLowerCase();
+  } catch {
+    return "";
+  }
+}
+
+function uniqueStrings(values: Array<string | null | undefined>) {
+  return [...new Set(values.map((value) => value?.trim()).filter(Boolean))] as string[];
+}
+
+function truncateText(value: string, maxLength: number) {
+  return value.length > maxLength ? `${value.slice(0, maxLength)}...` : value;
+}
+
+function decodeHtmlEntities(value: string) {
+  return value
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/&#(\d+);/g, (_, code) => String.fromCodePoint(Number(code)))
+    .replace(/&#x([0-9a-f]+);/gi, (_, code) =>
+      String.fromCodePoint(Number.parseInt(code, 16)),
+    )
+    .trim();
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 async function createSeriesSummary({
   series,
   context,
+  sources,
   model,
   webSearchToolType,
+  allowWebSearch,
   retryForTooShort = false,
 }: {
   series: SeriesRow;
   context: SeriesContext | undefined;
+  sources: SeriesSummarySource[];
   model: string;
   webSearchToolType: string;
+  allowWebSearch: boolean;
+  retryForTooShort?: boolean;
+}) {
+  if (sources.length === 0) {
+    if (allowWebSearch) {
+      return createSeriesSummaryWithWebSearch({
+        series,
+        context,
+        sources,
+        model,
+        webSearchToolType,
+        allowWebSearch,
+        retryForTooShort,
+      });
+    }
+
+    return {
+      id: series.id,
+      title: series.display_title,
+      summary: "",
+      confidence: "low",
+      needs_review: true,
+      notes: "保存済みの情報ソースがありません。",
+      source_urls: [],
+    } satisfies SummaryResult;
+  }
+
+  const sourceContext = formatSourceContext(sources);
+  const body = {
+    model,
+    input: [
+      {
+        role: "system",
+        content: [
+          "あなたは漫画紹介文を作る編集者です。",
+          "Web検索は使わず、ユーザーから渡された参考情報だけを使ってください。",
+          "作品紹介ページに掲載できるような自然なあらすじを作成してください。",
+          "日本語で作成してください。",
+          "400字程度で作成してください。",
+          "3〜4段落に分け、段落間に空行を入れず、改行は1つだけにしてください。",
+          "漫画の作品名は必ず『』で囲んでください。",
+          "冒頭のあらすじ要約は1行だけで書き、その直後に改行して次の段落へ進んでください。",
+          "作品名、作者、ジャンル感、主人公、舞台、導入、見どころを自然に含めてください。",
+          "結末や重大なネタバレは避けてください。",
+          "参考情報にない設定や固有名詞を勝手に追加しないでください。",
+          "参考情報をそのままコピーせず、必ず言い換えて再構成してください。",
+          "あらすじ本文には、引用文、引用符、出典名、URL、参考文献のような記述を含めないでください。",
+          "文体は漫画紹介文らしく、少しドラマチックにしてください。",
+          "ただし煽りすぎず、落ち着いた紹介文にしてください。",
+          "「〇〇が見どころ」「読み応えのある一作」のような主観的な評価表現は使わず、確認できる内容に基づいて魅力を説明してください。",
+          "短い文を連続して並べず、文の長短や接続に緩急をつけて、自然な流れのある文章にしてください。",
+          "ですます調を使わないでください。",
+          "文末を「だ」「である」「となる」で終わらせないでください。",
+          "「〜していく」「〜へ向かう」「〜が描かれる」「〜に巻き込まれていく」などを自然に使ってください。",
+          "不明な情報は補完しないでください。",
+          "同名作品などで特定できない場合や情報不足の場合は needs_review=true にしてください。",
+          "確認に使った主要なURLは、渡されたsource_materials内のurlだけからsource_urlsに入れてください。",
+          retryForTooShort
+            ? "前回の出力が短すぎたため、情報を補完せず、確認できた範囲の導入や展開を厚めにして400字程度まで自然に広げてください。"
+            : null,
+        ]
+          .filter(Boolean)
+          .join("\n"),
+      },
+      {
+        role: "user",
+        content: [
+          `id: ${series.id}`,
+          `title: ${series.display_title}`,
+          `search_title: ${series.search_title}`,
+          `authors: ${formatList(context?.authors)}`,
+          `publishers: ${formatList(context?.publishers)}`,
+          `imprints: ${formatList(context?.imprints)}`,
+          `genres: ${formatList(context?.genres)}`,
+          `source_materials:\n${sourceContext}`,
+        ].join("\n"),
+      },
+    ],
+    text: {
+      format: {
+        type: "json_schema",
+        name: "manga_summary",
+        strict: true,
+        schema: SUMMARY_SCHEMA,
+      },
+    },
+  };
+  let response;
+
+  try {
+    response = await openAIRequest("/responses", {
+      method: "POST",
+      json: body,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    if (model !== DEFAULT_MODEL && shouldFallbackToDefaultModel(message)) {
+      return createSeriesSummary({
+        series,
+        context,
+        sources,
+        model: DEFAULT_MODEL,
+        webSearchToolType,
+        allowWebSearch,
+        retryForTooShort,
+      });
+    }
+
+    throw error;
+  }
+
+  const outputText = extractOutputText(response);
+
+  if (!outputText) {
+    throw new Error("No output text found.");
+  }
+
+  return normalizeSummaryResult(JSON.parse(outputText) as SummaryResult);
+}
+
+async function createSeriesSummaryWithWebSearch({
+  series,
+  context,
+  sources,
+  model,
+  webSearchToolType,
+  allowWebSearch,
+  retryForTooShort = false,
+}: {
+  series: SeriesRow;
+  context: SeriesContext | undefined;
+  sources: SeriesSummarySource[];
+  model: string;
+  webSearchToolType: string;
+  allowWebSearch: boolean;
   retryForTooShort?: boolean;
 }) {
   const body = {
@@ -637,6 +1492,8 @@ async function createSeriesSummary({
           "日本語で作成してください。",
           "400字程度で作成してください。",
           "3〜4段落に分け、段落間に空行を入れず、改行は1つだけにしてください。",
+          "漫画の作品名は必ず『』で囲んでください。",
+          "冒頭のあらすじ要約は1行だけで書き、その直後に改行して次の段落へ進んでください。",
           "作品名、作者、ジャンル感、主人公、舞台、導入、見どころを自然に含めてください。",
           "結末や重大なネタバレは避けてください。",
           "参考情報にない設定や固有名詞を勝手に追加しないでください。",
@@ -699,11 +1556,13 @@ async function createSeriesSummary({
     const message = error instanceof Error ? error.message : String(error);
 
     if (model !== DEFAULT_MODEL && shouldFallbackToDefaultModel(message)) {
-      return createSeriesSummary({
+      return createSeriesSummaryWithWebSearch({
         series,
         context,
+        sources,
         model: DEFAULT_MODEL,
         webSearchToolType,
+        allowWebSearch,
         retryForTooShort,
       });
     }
