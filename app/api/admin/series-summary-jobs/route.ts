@@ -1882,7 +1882,11 @@ async function fetchSourceContent(url: string) {
       extractMetaPropertyContent(html, "og:description") ??
       "",
   );
-  const text = extractReadableText(html);
+  const text = uniqueStrings([
+    extractReadableText(html),
+    extractStructuredDataText(html),
+    description,
+  ]).join("\n\n");
 
   if (text.length < 80 && !description) {
     throw new Error("Extracted text is too short.");
@@ -2013,6 +2017,80 @@ function extractReadableText(html: string) {
       .replace(/\n{3,}/g, "\n\n")
       .trim(),
   );
+}
+
+function extractStructuredDataText(html: string) {
+  const texts: string[] = [];
+  const scriptPattern = /<script\b([^>]*)>([\s\S]*?)<\/script>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = scriptPattern.exec(html))) {
+    const attributes = match[1] ?? "";
+    const rawScript = match[2] ?? "";
+
+    if (
+      !/application\/(ld\+json|json)/i.test(attributes) &&
+      !/id=["']__NEXT_DATA__["']/i.test(attributes)
+    ) {
+      continue;
+    }
+
+    const scriptText = decodeHtmlEntities(rawScript)
+      .replace(/^\s*<!--/, "")
+      .replace(/-->\s*$/, "")
+      .trim();
+
+    if (!scriptText) {
+      continue;
+    }
+
+    try {
+      collectJsonStringValues(JSON.parse(scriptText), texts);
+    } catch {
+      const fallbackMatches = scriptText.matchAll(
+        /"(?:name|title|headline|description|author|publisher|isbn)"\s*:\s*"([^"]+)"/gi,
+      );
+
+      for (const fallbackMatch of fallbackMatches) {
+        texts.push(fallbackMatch[1] ?? "");
+      }
+    }
+  }
+
+  return uniqueStrings(texts)
+    .filter((text) => text.length >= 2)
+    .slice(0, 80)
+    .join("\n");
+}
+
+function collectJsonStringValues(value: unknown, texts: string[]) {
+  if (typeof value === "string") {
+    const normalized = decodeHtmlEntities(value).trim();
+
+    if (
+      normalized.length >= 2 &&
+      normalized.length <= 500 &&
+      !/^https?:\/\//.test(normalized)
+    ) {
+      texts.push(normalized);
+    }
+
+    return;
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      collectJsonStringValues(item, texts);
+    }
+
+    return;
+  }
+
+  if (value && typeof value === "object") {
+    for (const item of Object.values(value)) {
+      collectJsonStringValues(item, texts);
+    }
+  }
 }
 
 function extractLikelyMainHtml(html: string) {
