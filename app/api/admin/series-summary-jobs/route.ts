@@ -495,19 +495,31 @@ async function collectSummarySources(request: Request) {
   let failedCount = 0;
 
   for (const series of seriesRows) {
+    const seriesContext = context.get(series.id);
+    const isbns = isbnsBySeriesId.get(series.id) ?? [];
+    const publisherCandidates =
+      sourceProvider === "crawler"
+        ? [...inferPublisherCandidates(seriesContext, isbns)]
+        : [];
     const existingSources = await fetchSummarySourcesForSeries(
       supabase,
       series.id,
     );
     const discoveredUrls = await discoverSourceUrls({
       series,
-      context: context.get(series.id),
-      isbns: isbnsBySeriesId.get(series.id) ?? [],
+      context: seriesContext,
+      isbns,
       provider: sourceProvider,
     });
+    const fetchedExistingUrls = existingSources
+      .filter((source) => source.status === "fetched" && source.extracted_text)
+      .map((source) => source.url);
+    const refetchUrls =
+      body.refetch === true ? existingSources.map((source) => source.url) : [];
     const urls = uniqueStrings([
-      ...existingSources.map((source) => source.url),
+      ...fetchedExistingUrls,
       ...discoveredUrls,
+      ...refetchUrls,
     ]).slice(0, MAX_SOURCES_PER_SERIES);
     const sourceResults = [];
 
@@ -528,8 +540,8 @@ async function collectSummarySources(request: Request) {
       const source = await fetchAndStoreSummarySource({
         supabase,
         series,
-        context: context.get(series.id),
-        isbns: isbnsBySeriesId.get(series.id) ?? [],
+        context: seriesContext,
+        isbns,
         seriesId: series.id,
         url,
       });
@@ -552,6 +564,8 @@ async function collectSummarySources(request: Request) {
     results.push({
       seriesId: series.id,
       title: series.display_title,
+      isbns,
+      publisherCandidates,
       existingSourceCount: existingSources.length,
       discoveredSourceCount: discoveredUrls.length,
       processedSourceCount: sourceResults.length,
@@ -1127,12 +1141,18 @@ function buildDirectCrawlerSourceUrls(
 
   for (const isbn of isbns.slice(0, 3)) {
     const normalized = normalizeIsbn(isbn);
-    const isbn10 = isbn13ToIsbn10(isbn);
-    const hyphenated = hyphenateJapaneseIsbn13(isbn);
+    const isbn13 =
+      normalized?.length === 13
+        ? normalized
+        : normalized
+          ? isbn10ToIsbn13(normalized)
+          : null;
+    const isbn10 = normalized ? isbn13ToIsbn10(normalized) : null;
+    const hyphenated = isbn13 ? hyphenateJapaneseIsbn13(isbn13) : null;
 
-    if (normalized && candidates.has("square_enix")) {
+    if (isbn13 && candidates.has("square_enix")) {
       urls.push(
-        `https://magazine.jp.square-enix.com/top/comics/detail/${normalized}/`,
+        `https://magazine.jp.square-enix.com/top/comics/detail/${isbn13}/`,
       );
     }
 
@@ -1140,8 +1160,8 @@ function buildDirectCrawlerSourceUrls(
       urls.push(`https://www.akitashoten.co.jp/comics/${isbn10}`);
     }
 
-    if (normalized && candidates.has("shogakukan")) {
-      urls.push(`https://shogakukan-comic.jp/book?isbn=${normalized}`);
+    if (isbn13 && candidates.has("shogakukan")) {
+      urls.push(`https://shogakukan-comic.jp/book?isbn=${isbn13}`);
     }
 
     if (hyphenated && candidates.has("shueisha")) {
@@ -1180,11 +1200,13 @@ async function crawlPublisherSearchUrls(
   for (const searchPage of searchPages) {
     try {
       const html = await fetchHtml(searchPage.url);
+      const pageLinks = extractLinks(html, searchPage.url);
       urls.push(
-        ...extractLinks(html, searchPage.url).filter((url) =>
-          searchPage.allowedDomains.some((domain) =>
-            domainFromUrl(url).endsWith(domain),
-          ) && isLikelyCrawlerSourceUrl(url),
+        ...expandCrawlerSourceUrls(pageLinks).filter(
+          (url) =>
+            searchPage.allowedDomains.some((domain) =>
+              domainFromUrl(url).endsWith(domain),
+            ) && isLikelyCrawlerSourceUrl(url),
         ),
       );
     } catch (error) {
@@ -1196,6 +1218,26 @@ async function crawlPublisherSearchUrls(
   }
 
   return urls;
+}
+
+function expandCrawlerSourceUrls(urls: string[]) {
+  const expanded = [...urls];
+
+  for (const url of urls) {
+    try {
+      const parsed = new URL(url);
+      const domain = parsed.hostname.toLowerCase();
+      const productId = parsed.pathname.match(/^\/product\/([^/]+)\/?$/)?.[1];
+
+      if (domain === "www.kadokawa.co.jp" && productId) {
+        expanded.push(`https://store.kadokawa.co.jp/shop/g/g${productId}/`);
+      }
+    } catch {
+      // Ignore malformed crawler result links.
+    }
+  }
+
+  return uniqueStrings(expanded);
 }
 
 function publisherSearchPages(
@@ -1382,7 +1424,7 @@ function inferPublisherCandidates(
   context: SeriesContext | undefined,
   isbns: string[],
 ) {
-  const candidates = new Set<string>();
+  const contextCandidates = new Set<string>();
   const joined = normalizeComparableText(
     [
       ...(context?.publishers ?? []),
@@ -1391,32 +1433,35 @@ function inferPublisherCandidates(
   );
 
   if (/kodansha|講談社|モーニング|ヤンマガ|マガジン/.test(joined)) {
-    candidates.add("kodansha");
+    contextCandidates.add("kodansha");
   }
 
   if (/kadokawa|角川|電撃|ドラゴン|アライブ|フラッパー/.test(joined)) {
-    candidates.add("kadokawa");
+    contextCandidates.add("kadokawa");
   }
 
   if (/akitashoten|秋田書店|チャンピオン/.test(joined)) {
-    candidates.add("akita");
+    contextCandidates.add("akita");
   }
 
   if (/squareenix|スクウェアエニックス|スクエニ|ガンガン|joker/.test(joined)) {
-    candidates.add("square_enix");
+    contextCandidates.add("square_enix");
   }
 
   if (/shogakukan|小学館|サンデー|ビッグコミック|スピリッツ|ちゃお/.test(joined)) {
-    candidates.add("shogakukan");
+    contextCandidates.add("shogakukan");
   }
 
   if (/shueisha|集英社|ジャンプ|マーガレット|りぼん|ヤングジャンプ/.test(joined)) {
-    candidates.add("shueisha");
+    contextCandidates.add("shueisha");
   }
 
   if (/ichijinsha|一迅社|百合姫|comicrex/.test(joined)) {
-    candidates.add("ichijinsha");
+    contextCandidates.add("ichijinsha");
   }
+
+  const strongIsbnCandidates = new Set<string>();
+  let hasAmbiguous475Prefix = false;
 
   for (const isbn of isbns) {
     const normalized = normalizeIsbn(isbn);
@@ -1426,28 +1471,48 @@ function inferPublisherCandidates(
     }
 
     if (normalized.startsWith("978406") || normalized.startsWith("406")) {
-      candidates.add("kodansha");
+      strongIsbnCandidates.add("kodansha");
     }
 
     if (normalized.startsWith("978404") || normalized.startsWith("404")) {
-      candidates.add("kadokawa");
+      strongIsbnCandidates.add("kadokawa");
     }
 
     if (normalized.startsWith("978425") || normalized.startsWith("425")) {
-      candidates.add("akita");
+      strongIsbnCandidates.add("akita");
     }
 
     if (normalized.startsWith("978475") || normalized.startsWith("475")) {
-      candidates.add("square_enix");
-      candidates.add("ichijinsha");
+      hasAmbiguous475Prefix = true;
     }
 
     if (normalized.startsWith("978409") || normalized.startsWith("409")) {
-      candidates.add("shogakukan");
+      strongIsbnCandidates.add("shogakukan");
     }
 
     if (normalized.startsWith("978408") || normalized.startsWith("408")) {
-      candidates.add("shueisha");
+      strongIsbnCandidates.add("shueisha");
+    }
+  }
+
+  if (strongIsbnCandidates.size > 0) {
+    return strongIsbnCandidates;
+  }
+
+  const candidates = new Set(contextCandidates);
+
+  if (hasAmbiguous475Prefix) {
+    const matching475Candidates = [...contextCandidates].filter(
+      (candidate) => candidate === "square_enix" || candidate === "ichijinsha",
+    );
+
+    if (matching475Candidates.length > 0) {
+      return new Set(matching475Candidates);
+    }
+
+    if (contextCandidates.size === 0) {
+      candidates.add("square_enix");
+      candidates.add("ichijinsha");
     }
   }
 
@@ -2067,6 +2132,28 @@ function isbn13ToIsbn10(isbn: string) {
   const checkDigit =
     remainder === 10 ? "X" : remainder === 11 ? "0" : String(remainder);
 
+  return `${body}${checkDigit}`;
+}
+
+function isbn10ToIsbn13(isbn: string) {
+  const normalized = normalizeIsbn(isbn);
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.length === 13) {
+    return normalized;
+  }
+
+  const body = `978${normalized.slice(0, 9)}`;
+  let sum = 0;
+
+  for (let index = 0; index < body.length; index += 1) {
+    sum += Number(body[index]) * (index % 2 === 0 ? 1 : 3);
+  }
+
+  const checkDigit = (10 - (sum % 10)) % 10;
   return `${body}${checkDigit}`;
 }
 

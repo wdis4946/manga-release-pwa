@@ -24,6 +24,7 @@
 .DS_Store
 *.pem
 /manga-series*.csv
+/data/
 
 # debug
 npm-debug.log*
