@@ -22,14 +22,27 @@ NEXT_PUBLIC_SUPABASE_URL=...
 SUPABASE_SECRET_KEY=...
 ```
 
-Google Custom Searchで候補URLも自動収集する場合:
+自前クロールで候補URLも自動収集する場合:
 
 ```env
+SOURCE_SEARCH_PROVIDER=crawler
+```
+
+`crawler` は検索APIを使わず、`series_items` のISBNと出版社サイトの既知URL規則、出版社サイト内検索ページから公式・出版社URLを探します。
+
+Google Custom Searchで候補URLを自動収集する旧方式:
+
+```env
+SOURCE_SEARCH_PROVIDER=google
 GOOGLE_SEARCH_API_KEY=...
 GOOGLE_SEARCH_ENGINE_ID=...
 ```
 
-未設定の場合、`collect-sources` は検索を行わず、すでにDBへ取り込まれているURLだけをfetchします。
+検索・クロールを行わず、すでにDBへ取り込まれているURLだけをfetchする場合:
+
+```env
+SOURCE_SEARCH_PROVIDER=none
+```
 
 ## 1. 既存source_urlsを取り込む
 
@@ -56,11 +69,13 @@ CSVから取り込んだURLだけをfetchする場合:
 node scripts/series-summary-jobs.mjs collect-sources --limit 20 --no-search
 ```
 
-Google Custom Searchも使って候補URLを増やす場合:
+自前クロールで候補URLを増やす場合:
 
 ```powershell
 node scripts/series-summary-jobs.mjs collect-sources --limit 20
 ```
+
+Google Custom Searchを使う場合は、`SOURCE_SEARCH_PROVIDER=google` と `GOOGLE_SEARCH_API_KEY` / `GOOGLE_SEARCH_ENGINE_ID` を設定します。
 
 再取得したい場合:
 

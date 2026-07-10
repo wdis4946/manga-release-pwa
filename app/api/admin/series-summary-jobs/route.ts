@@ -11,6 +11,7 @@ const MAX_ENQUEUE_LIMIT = 5000;
 const MAX_WORKER_LIMIT = 10;
 const MAX_SOURCE_COLLECT_LIMIT = 50;
 const MAX_SOURCES_PER_SERIES = 8;
+const MAX_CRAWLER_SEARCH_PAGES_PER_SERIES = 5;
 const MAX_SOURCE_TEXT_LENGTH = 5000;
 const MAX_SOURCE_CONTEXT_LENGTH = 16000;
 const MIN_SUMMARY_LENGTH = 300;
@@ -81,6 +82,8 @@ type SourceType =
   | "ebook_store"
   | "reference_database"
   | "other";
+
+type SourceDiscoveryProvider = "none" | "crawler" | "google";
 
 type SummaryResult = {
   id: string;
@@ -477,7 +480,14 @@ async function collectSummarySources(request: Request) {
     supabase,
     seriesRows.map((series) => series.id),
   );
-  const searchEnabled = body.search !== false && hasGoogleSearchConfig();
+  const sourceProvider = getSourceDiscoveryProvider(body.search !== false);
+  const isbnsBySeriesId =
+    sourceProvider === "crawler"
+      ? await fetchSeriesIsbns(
+          supabase,
+          seriesRows.map((series) => series.id),
+        )
+      : new Map<string, string[]>();
   const results = [];
   let discoveredUrlCount = 0;
   let fetchedCount = 0;
@@ -488,9 +498,12 @@ async function collectSummarySources(request: Request) {
       supabase,
       series.id,
     );
-    const discoveredUrls = searchEnabled
-      ? await discoverSourceUrls(series, context.get(series.id))
-      : [];
+    const discoveredUrls = await discoverSourceUrls({
+      series,
+      context: context.get(series.id),
+      isbns: isbnsBySeriesId.get(series.id) ?? [],
+      provider: sourceProvider,
+    });
     const urls = uniqueStrings([
       ...existingSources.map((source) => source.url),
       ...discoveredUrls,
@@ -546,15 +559,14 @@ async function collectSummarySources(request: Request) {
     mode: "collect-sources",
     limit,
     offset,
-    searchEnabled,
+    searchEnabled: sourceProvider !== "none",
+    sourceProvider,
     targetCount: seriesRows.length,
     discoveredUrlCount,
     fetchedCount,
     failedCount,
     results,
-    requiredSettings: searchEnabled
-      ? []
-      : ["GOOGLE_SEARCH_API_KEY", "GOOGLE_SEARCH_ENGINE_ID"],
+    requiredSettings: requiredSourceDiscoverySettings(sourceProvider),
   };
 }
 
@@ -933,6 +945,43 @@ async function fetchSeriesContext(
   return context;
 }
 
+async function fetchSeriesIsbns(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  seriesIds: string[],
+) {
+  const isbnsBySeriesId = new Map<string, string[]>(
+    seriesIds.map((seriesId) => [seriesId, []]),
+  );
+
+  if (seriesIds.length === 0) {
+    return isbnsBySeriesId;
+  }
+
+  for (let index = 0; index < seriesIds.length; index += 200) {
+    const chunk = seriesIds.slice(index, index + 200);
+    const { data, error } = await supabase
+      .from("series_items")
+      .select("series_id, isbn, display_order")
+      .in("series_id", chunk)
+      .order("display_order", { ascending: true });
+
+    if (error) {
+      throw error;
+    }
+
+    for (const row of data ?? []) {
+      const isbns = isbnsBySeriesId.get(row.series_id);
+      const isbn = normalizeIsbn(row.isbn);
+
+      if (isbns && isbn && !isbns.includes(isbn)) {
+        isbns.push(isbn);
+      }
+    }
+  }
+
+  return isbnsBySeriesId;
+}
+
 async function fetchUsableSummarySources(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   seriesIds: string[],
@@ -994,10 +1043,25 @@ async function fetchSummarySourcesForSeries(
   return (data ?? []) as SeriesSummarySource[];
 }
 
-async function discoverSourceUrls(
-  series: SeriesRow,
-  context: SeriesContext | undefined,
-) {
+async function discoverSourceUrls({
+  series,
+  context,
+  isbns,
+  provider,
+}: {
+  series: SeriesRow;
+  context: SeriesContext | undefined;
+  isbns: string[];
+  provider: SourceDiscoveryProvider;
+}) {
+  if (provider === "none") {
+    return [];
+  }
+
+  if (provider === "crawler") {
+    return discoverCrawlerSourceUrls(series, context, isbns);
+  }
+
   const title = series.display_title || series.search_title;
   const author = context?.authors[0];
   const publisher = context?.publishers[0];
@@ -1031,6 +1095,153 @@ async function discoverSourceUrls(
     .filter((url): url is string => Boolean(url))
     .sort((a, b) => scoreSourceUrl(b) - scoreSourceUrl(a))
     .slice(0, MAX_SOURCES_PER_SERIES);
+}
+
+async function discoverCrawlerSourceUrls(
+  series: SeriesRow,
+  context: SeriesContext | undefined,
+  isbns: string[],
+) {
+  const directUrls = buildDirectCrawlerSourceUrls(isbns);
+  const searchUrls = await crawlPublisherSearchUrls(series, context);
+
+  return uniqueStrings([...directUrls, ...searchUrls])
+    .map(normalizeUrl)
+    .filter((url): url is string => Boolean(url))
+    .filter((url) => isAllowedCrawlerSourceUrl(url))
+    .sort((a, b) => scoreSourceUrl(b) - scoreSourceUrl(a))
+    .slice(0, MAX_SOURCES_PER_SERIES);
+}
+
+function buildDirectCrawlerSourceUrls(isbns: string[]) {
+  const urls: string[] = [];
+
+  for (const isbn of isbns.slice(0, 3)) {
+    const isbn10 = isbn13ToIsbn10(isbn);
+    const hyphenated = hyphenateJapaneseIsbn13(isbn);
+
+    urls.push(
+      `https://magazine.jp.square-enix.com/top/comics/detail/${isbn}/`,
+      `https://www.kodansha.co.jp/comic/products/${isbn}`,
+    );
+
+    if (isbn10) {
+      urls.push(`https://www.akitashoten.co.jp/comics/${isbn10}`);
+    }
+
+    if (hyphenated) {
+      urls.push(
+        `https://www.shueisha.co.jp/books/items/contents.html?isbn=${encodeURIComponent(hyphenated)}&mode=1`,
+        `https://books.shueisha.co.jp/items/contents.html?isbn=${encodeURIComponent(hyphenated)}`,
+        `https://www.s-manga.net/items/contents.html?isbn=${encodeURIComponent(hyphenated)}`,
+      );
+    }
+  }
+
+  return urls;
+}
+
+async function crawlPublisherSearchUrls(
+  series: SeriesRow,
+  context: SeriesContext | undefined,
+) {
+  const title = series.display_title || series.search_title;
+  const author = context?.authors[0];
+  const baseQuery = uniqueStrings([title, series.search_title, author]).join(
+    " ",
+  );
+
+  if (!baseQuery) {
+    return [];
+  }
+
+  const searchPages = publisherSearchPages(baseQuery, context).slice(
+    0,
+    MAX_CRAWLER_SEARCH_PAGES_PER_SERIES,
+  );
+  const urls: string[] = [];
+
+  for (const searchPage of searchPages) {
+    try {
+      const html = await fetchHtml(searchPage.url);
+      urls.push(
+        ...extractLinks(html, searchPage.url).filter((url) =>
+          searchPage.allowedDomains.some((domain) =>
+            domainFromUrl(url).endsWith(domain),
+          ),
+        ),
+      );
+    } catch (error) {
+      console.warn("[Series summary sources] Search page crawl failed.", {
+        url: searchPage.url,
+        error: error instanceof Error ? error.message : "Unknown error.",
+      });
+    }
+  }
+
+  return urls;
+}
+
+function publisherSearchPages(
+  query: string,
+  context: SeriesContext | undefined,
+) {
+  const encoded = encodeURIComponent(query);
+  const domains = preferredSourceDomains(context);
+  const pages = [
+    {
+      url: `https://www.kodansha.co.jp/search?keyword=${encoded}`,
+      allowedDomains: ["kodansha.co.jp", "shonenmagazine.com"],
+    },
+    {
+      url: `https://www.kadokawa.co.jp/search?kw=${encoded}`,
+      allowedDomains: ["kadokawa.co.jp", "dragonage-comic.com", "comic-alive.jp"],
+    },
+    {
+      url: `https://www.akitashoten.co.jp/search?q=${encoded}`,
+      allowedDomains: ["akitashoten.co.jp", "youngchampion.jp"],
+    },
+    {
+      url: `https://magazine.jp.square-enix.com/search/?q=${encoded}`,
+      allowedDomains: ["magazine.jp.square-enix.com", "ganganonline.com"],
+    },
+    {
+      url: `https://shogakukan-comic.jp/search?q=${encoded}`,
+      allowedDomains: ["shogakukan-comic.jp", "shogakukan.co.jp"],
+    },
+    {
+      url: `https://www.shueisha.co.jp/search?keyword=${encoded}`,
+      allowedDomains: ["shueisha.co.jp", "s-manga.net", "shonenjumpplus.com"],
+    },
+  ];
+
+  if (domains.length === 0) {
+    return pages;
+  }
+
+  const prioritized = pages.filter((page) =>
+    page.allowedDomains.some((domain) =>
+      domains.some((preferred) => preferred.endsWith(domain)),
+    ),
+  );
+
+  return prioritized.length ? prioritized : pages;
+}
+
+function isAllowedCrawlerSourceUrl(url: string) {
+  const domain = domainFromUrl(url);
+
+  if (!domain) {
+    return false;
+  }
+
+  if (classifySourceUrl(url) === "publisher_official") {
+    return true;
+  }
+
+  return /official|fairytail|fxkurumi|chibimaru|ai-no-idenshi|classroom-crisis|btooom|kagaku-adv|haratetsuo/.test(
+    domain,
+  );
 }
 
 function preferredSourceDomains(context: SeriesContext | undefined) {
@@ -1123,6 +1334,40 @@ function hasGoogleSearchConfig() {
   );
 }
 
+function getSourceDiscoveryProvider(
+  searchRequested: boolean,
+): SourceDiscoveryProvider {
+  if (!searchRequested) {
+    return "none";
+  }
+
+  const configured = process.env.SOURCE_SEARCH_PROVIDER?.toLowerCase();
+
+  if (configured === "none") {
+    return "none";
+  }
+
+  if (configured === "crawler" || configured === "crawl") {
+    return "crawler";
+  }
+
+  if (configured === "google" || configured === "google_custom_search") {
+    return hasGoogleSearchConfig() ? "google" : "none";
+  }
+
+  return "crawler";
+}
+
+function requiredSourceDiscoverySettings(provider: SourceDiscoveryProvider) {
+  if (provider === "google") {
+    return hasGoogleSearchConfig()
+      ? []
+      : ["GOOGLE_SEARCH_API_KEY", "GOOGLE_SEARCH_ENGINE_ID"];
+  }
+
+  return [];
+}
+
 async function fetchAndStoreSummarySource({
   supabase,
   seriesId,
@@ -1207,6 +1452,27 @@ async function upsertSummarySource({
 }
 
 async function fetchSourceContent(url: string) {
+  const html = await fetchHtml(url);
+  const title = decodeHtmlEntities(extractTagContent(html, "title") ?? "");
+  const description = decodeHtmlEntities(
+    extractMetaContent(html, "description") ??
+      extractMetaPropertyContent(html, "og:description") ??
+      "",
+  );
+  const text = extractReadableText(html);
+
+  if (text.length < 80 && !description) {
+    throw new Error("Extracted text is too short.");
+  }
+
+  return {
+    title: truncateText(title, 300),
+    description: truncateText(description, 1000),
+    text: truncateText(text || description, MAX_SOURCE_TEXT_LENGTH),
+  };
+}
+
+async function fetchHtml(url: string) {
   const response = await fetch(url, {
     headers: {
       Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -1225,24 +1491,7 @@ async function fetchSourceContent(url: string) {
     throw new Error(`Unsupported content type: ${contentType || "unknown"}`);
   }
 
-  const html = await response.text();
-  const title = decodeHtmlEntities(extractTagContent(html, "title") ?? "");
-  const description = decodeHtmlEntities(
-    extractMetaContent(html, "description") ??
-      extractMetaPropertyContent(html, "og:description") ??
-      "",
-  );
-  const text = extractReadableText(html);
-
-  if (text.length < 80 && !description) {
-    throw new Error("Extracted text is too short.");
-  }
-
-  return {
-    title: truncateText(title, 300),
-    description: truncateText(description, 1000),
-    text: truncateText(text || description, MAX_SOURCE_TEXT_LENGTH),
-  };
+  return response.text();
 }
 
 function extractReadableText(html: string) {
@@ -1299,6 +1548,38 @@ function extractMetaPropertyContent(html: string, property: string) {
     "i",
   );
   return html.match(pattern)?.[1]?.trim() ?? null;
+}
+
+function extractLinks(html: string, baseUrl: string) {
+  const links: string[] = [];
+  const pattern = /<a\b[^>]+href=["']([^"']+)["'][^>]*>/gi;
+  let match: RegExpExecArray | null;
+
+  while ((match = pattern.exec(html))) {
+    const href = decodeHtmlEntities(match[1] ?? "");
+
+    if (
+      !href ||
+      href.startsWith("#") ||
+      href.startsWith("mailto:") ||
+      href.startsWith("tel:")
+    ) {
+      continue;
+    }
+
+    try {
+      const url = new URL(href, baseUrl);
+      const normalized = normalizeUrl(url.toString());
+
+      if (normalized) {
+        links.push(normalized);
+      }
+    } catch {
+      // Ignore malformed page links.
+    }
+  }
+
+  return uniqueStrings(links);
 }
 
 function classifySourceUrl(url: string): SourceType {
@@ -1399,6 +1680,61 @@ function normalizeUrl(url: string) {
   } catch {
     return null;
   }
+}
+
+function normalizeIsbn(value: string | null | undefined) {
+  const digits = String(value ?? "").replace(/[^0-9X]/gi, "").toUpperCase();
+
+  if (digits.length === 10 || digits.length === 13) {
+    return digits;
+  }
+
+  return null;
+}
+
+function isbn13ToIsbn10(isbn: string) {
+  const normalized = normalizeIsbn(isbn);
+
+  if (!normalized) {
+    return null;
+  }
+
+  if (normalized.length === 10) {
+    return normalized;
+  }
+
+  if (!normalized.startsWith("978")) {
+    return null;
+  }
+
+  const body = normalized.slice(3, 12);
+  let sum = 0;
+
+  for (let index = 0; index < body.length; index += 1) {
+    sum += Number(body[index]) * (10 - index);
+  }
+
+  const remainder = 11 - (sum % 11);
+  const checkDigit =
+    remainder === 10 ? "X" : remainder === 11 ? "0" : String(remainder);
+
+  return `${body}${checkDigit}`;
+}
+
+function hyphenateJapaneseIsbn13(isbn: string) {
+  const normalized = normalizeIsbn(isbn);
+
+  if (!normalized || normalized.length !== 13 || !normalized.startsWith("9784")) {
+    return null;
+  }
+
+  return [
+    normalized.slice(0, 3),
+    normalized.slice(3, 4),
+    normalized.slice(4, 6),
+    normalized.slice(6, 12),
+    normalized.slice(12),
+  ].join("-");
 }
 
 function domainFromUrl(url: string) {
