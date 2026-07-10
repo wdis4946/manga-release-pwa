@@ -149,11 +149,49 @@ export async function POST(request: Request) {
     return Response.json(
       {
         ok: false,
-        error: error instanceof Error ? error.message : "Unknown error.",
+        error: errorMessageFromUnknown(error),
+        errorDetails: errorDetailsFromUnknown(error),
       },
       { status: 500 },
     );
   }
+}
+
+function errorMessageFromUnknown(error: unknown) {
+  if (error instanceof Error) {
+    return error.message;
+  }
+
+  if (error && typeof error === "object") {
+    const record = error as Record<string, unknown>;
+    const message = record.message ?? record.error_description ?? record.error;
+
+    if (typeof message === "string" && message.trim()) {
+      return message;
+    }
+
+    try {
+      return JSON.stringify(error);
+    } catch {
+      return String(error);
+    }
+  }
+
+  return String(error || "Unknown error.");
+}
+
+function errorDetailsFromUnknown(error: unknown) {
+  if (!error || typeof error !== "object") {
+    return null;
+  }
+
+  const record = error as Record<string, unknown>;
+  return {
+    code: record.code ?? null,
+    details: record.details ?? null,
+    hint: record.hint ?? null,
+    name: record.name ?? null,
+  };
 }
 
 async function enqueueSummaryJobs(request: Request) {
@@ -1935,7 +1973,7 @@ async function fetchAndStoreSummarySource({
       seriesId,
       url,
       status: "failed",
-      errorMessage: error instanceof Error ? error.message : "Unknown error.",
+      errorMessage: errorMessageFromUnknown(error),
     });
   }
 }
