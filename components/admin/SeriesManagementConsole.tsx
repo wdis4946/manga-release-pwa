@@ -1855,6 +1855,7 @@ export function SeriesManagementConsole({
                         src={entry.representativeImageUrl}
                         alt=""
                         fill
+                        unoptimized
                         sizes="44px"
                         className="object-cover"
                       />
@@ -2165,6 +2166,7 @@ export function SeriesManagementConsole({
                         src={currentSeries.representativeImageUrl}
                         alt={currentSeries.displayTitle}
                         fill
+                        unoptimized
                         sizes="128px"
                         className="object-cover"
                       />

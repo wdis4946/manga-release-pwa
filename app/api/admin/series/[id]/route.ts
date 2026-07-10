@@ -1,4 +1,5 @@
 import { getAdminUser } from "@/lib/admin/auth";
+import { createSeriesCoverUrl } from "@/lib/admin/series-cover-url";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 type RouteContext = {
@@ -30,11 +31,10 @@ export async function GET(request: Request, context: RouteContext) {
     return Response.json({ error: "Series not found." }, { status: 404 });
   }
 
-  const representativeImageUrl = series.representative_image_path
-    ? supabase.storage
-        .from("series-covers")
-        .getPublicUrl(series.representative_image_path).data.publicUrl
-    : null;
+  const representativeImageUrl = await createSeriesCoverUrl(
+    supabase,
+    series.representative_image_path,
+  );
 
   const { data: links, error: linksError } = await supabase
     .from("series_items")

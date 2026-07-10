@@ -1,4 +1,5 @@
 import { getAdminUser } from "@/lib/admin/auth";
+import { createSeriesCoverUrl } from "@/lib/admin/series-cover-url";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
 const PAGE_SIZE = 50;
@@ -11,16 +12,15 @@ type AdminSeriesListRow = {
   representative_image_path: string | null;
 };
 
-function toSeriesResponse(
+async function toSeriesResponse(
   row: AdminSeriesListRow,
   itemCount: number,
   supabase: ReturnType<typeof createSupabaseAdminClient>,
 ) {
-  const representativeImageUrl = row.representative_image_path
-    ? supabase.storage
-        .from("series-covers")
-        .getPublicUrl(row.representative_image_path).data.publicUrl
-    : null;
+  const representativeImageUrl = await createSeriesCoverUrl(
+    supabase,
+    row.representative_image_path,
+  );
 
   return {
     id: row.id,
@@ -81,10 +81,14 @@ export async function GET(request: Request) {
       const pageRows = sortedRows.slice(from, from + PAGE_SIZE);
       const itemCounts = await countItemsBySeriesId(supabase, pageRows);
 
-      return Response.json({
-        series: pageRows.map((row) =>
+      const responseSeries = await Promise.all(
+        pageRows.map((row) =>
           toSeriesResponse(row, itemCounts.get(row.id) ?? 0, supabase),
         ),
+      );
+
+      return Response.json({
+        series: responseSeries,
         page,
         pageSize: PAGE_SIZE,
         total: sortedRows.length,
@@ -132,10 +136,14 @@ export async function GET(request: Request) {
     );
   }
 
-  return Response.json({
-    series: rows.map((row) =>
+  const responseSeries = await Promise.all(
+    rows.map((row) =>
       toSeriesResponse(row, itemCounts.get(row.id) ?? 0, supabase),
     ),
+  );
+
+  return Response.json({
+    series: responseSeries,
     page,
     pageSize: PAGE_SIZE,
     total: count ?? 0,

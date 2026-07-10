@@ -1,7 +1,10 @@
 import { getAdminUser } from "@/lib/admin/auth";
+import {
+  createSeriesCoverUrl,
+  SERIES_COVERS_BUCKET,
+} from "@/lib/admin/series-cover-url";
 import { createSupabaseAdminClient } from "@/lib/supabase/server";
 
-const BUCKET_NAME = "series-covers";
 const MAX_FILE_SIZE = 5 * 1024 * 1024;
 const ALLOWED_IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -42,12 +45,6 @@ function formatStorageTimestamp(date: Date) {
     pad(date.getUTCSeconds()),
     pad(date.getUTCMilliseconds(), 3),
   ].join("");
-}
-
-function getPublicUrl(path: string) {
-  return createSupabaseAdminClient().storage
-    .from(BUCKET_NAME)
-    .getPublicUrl(path).data.publicUrl;
 }
 
 export async function POST(request: Request, context: RouteContext) {
@@ -103,7 +100,7 @@ export async function POST(request: Request, context: RouteContext) {
   const uploadedAt = new Date();
   const path = `series/${id}/${formatStorageTimestamp(uploadedAt)}.${extension}`;
   const { error: uploadError } = await supabase.storage
-    .from(BUCKET_NAME)
+    .from(SERIES_COVERS_BUCKET)
     .upload(path, file, {
       upsert: false,
       contentType: file.type,
@@ -116,7 +113,7 @@ export async function POST(request: Request, context: RouteContext) {
 
   if (series.representative_image_path && series.representative_image_path !== path) {
     await supabase.storage
-      .from(BUCKET_NAME)
+      .from(SERIES_COVERS_BUCKET)
       .remove([series.representative_image_path]);
   }
 
@@ -136,7 +133,10 @@ export async function POST(request: Request, context: RouteContext) {
 
   return Response.json({
     representativeImagePath: updatedSeries.representative_image_path,
-    representativeImageUrl: getPublicUrl(updatedSeries.representative_image_path),
+    representativeImageUrl: await createSeriesCoverUrl(
+      supabase,
+      updatedSeries.representative_image_path,
+    ),
   });
 }
 
@@ -165,7 +165,7 @@ export async function DELETE(request: Request, context: RouteContext) {
 
   if (series.representative_image_path) {
     const { error: removeError } = await supabase.storage
-      .from(BUCKET_NAME)
+      .from(SERIES_COVERS_BUCKET)
       .remove([series.representative_image_path]);
 
     if (removeError) {
