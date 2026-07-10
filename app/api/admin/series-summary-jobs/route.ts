@@ -505,7 +505,7 @@ async function collectSummarySources(request: Request) {
       supabase,
       series.id,
     );
-    const discoveredUrls = await discoverSourceUrls({
+    const discoveredSourceDetails = await discoverSourceUrls({
       series,
       context: seriesContext,
       isbns,
@@ -518,12 +518,12 @@ async function collectSummarySources(request: Request) {
       body.refetch === true ? existingSources.map((source) => source.url) : [];
     const urls = uniqueStrings([
       ...fetchedExistingUrls,
-      ...discoveredUrls,
+      ...discoveredSourceDetails.urls,
       ...refetchUrls,
     ]).slice(0, MAX_SOURCES_PER_SERIES);
     const sourceResults = [];
 
-    discoveredUrlCount += discoveredUrls.length;
+    discoveredUrlCount += discoveredSourceDetails.urls.length;
 
     for (const url of urls) {
       const existing = existingSources.find((source) => source.url === url);
@@ -566,8 +566,11 @@ async function collectSummarySources(request: Request) {
       title: series.display_title,
       isbns,
       publisherCandidates,
+      isbnDirectUrls: discoveredSourceDetails.directUrls,
+      searchResultUrls: discoveredSourceDetails.searchUrls,
+      discoveredUrls: discoveredSourceDetails.urls,
       existingSourceCount: existingSources.length,
-      discoveredSourceCount: discoveredUrls.length,
+      discoveredSourceCount: discoveredSourceDetails.urls.length,
       processedSourceCount: sourceResults.length,
       sources: sourceResults,
     });
@@ -1074,7 +1077,11 @@ async function discoverSourceUrls({
   provider: SourceDiscoveryProvider;
 }) {
   if (provider === "none") {
-    return [];
+    return {
+      directUrls: [],
+      searchUrls: [],
+      urls: [],
+    };
   }
 
   if (provider === "crawler") {
@@ -1109,11 +1116,17 @@ async function discoverSourceUrls({
     urls.push(...searchResults);
   }
 
-  return uniqueStrings(urls)
+  const discoveredUrls = uniqueStrings(urls)
     .map(normalizeUrl)
     .filter((url): url is string => Boolean(url))
     .sort((a, b) => scoreSourceUrl(b) - scoreSourceUrl(a))
     .slice(0, MAX_SOURCES_PER_SERIES);
+
+  return {
+    directUrls: [],
+    searchUrls: discoveredUrls,
+    urls: discoveredUrls,
+  };
 }
 
 async function discoverCrawlerSourceUrls(
@@ -1122,15 +1135,30 @@ async function discoverCrawlerSourceUrls(
   isbns: string[],
 ) {
   const candidates = inferPublisherCandidates(context, isbns);
-  const directUrls = buildDirectCrawlerSourceUrls(isbns, candidates);
-  const searchUrls = await crawlPublisherSearchUrls(series, context, isbns);
+  const directUrls = normalizeCrawlerSourceUrls(
+    buildDirectCrawlerSourceUrls(isbns, candidates),
+  );
+  const searchUrls = normalizeCrawlerSourceUrls(
+    await crawlPublisherSearchUrls(series, context, isbns),
+  );
+  const urls = normalizeCrawlerSourceUrls([...directUrls, ...searchUrls]).slice(
+    0,
+    MAX_SOURCES_PER_SERIES,
+  );
 
-  return uniqueStrings([...directUrls, ...searchUrls])
+  return {
+    directUrls,
+    searchUrls,
+    urls,
+  };
+}
+
+function normalizeCrawlerSourceUrls(urls: string[]) {
+  return uniqueStrings(urls)
     .map(normalizeUrl)
     .filter((url): url is string => Boolean(url))
     .filter((url) => isLikelyCrawlerSourceUrl(url))
-    .sort((a, b) => scoreSourceUrl(b) - scoreSourceUrl(a))
-    .slice(0, MAX_SOURCES_PER_SERIES);
+    .sort((a, b) => scoreSourceUrl(b) - scoreSourceUrl(a));
 }
 
 function buildDirectCrawlerSourceUrls(
