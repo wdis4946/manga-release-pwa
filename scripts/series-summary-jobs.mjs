@@ -18,13 +18,7 @@ async function main() {
 
   switch (command) {
     case "enqueue":
-      await callJobsApi("enqueue", {
-        limit: numberArg(args, "limit", 100),
-        offset: numberArg(args, "offset", 0),
-        includeUndescribed: Boolean(args["include-undescribed"]),
-        includeImageSet: Boolean(args["include-image-set"]),
-        maxAttempts: numberArg(args, "max-attempts", 3),
-      }, args);
+      await enqueueRepeatedly(args);
       break;
     case "run":
       await runRepeatedly(args);
@@ -61,6 +55,38 @@ async function main() {
       break;
     default:
       throw new Error(`Unknown command: ${command}`);
+  }
+}
+
+async function enqueueRepeatedly(args) {
+  const desiredLimit = numberArg(args, "limit", 100);
+  const batchSize = numberArg(args, "batch-size", desiredLimit);
+  const repeat = numberArg(args, "repeat", 1);
+  const intervalMs = numberArg(args, "interval-ms", 0);
+
+  for (let index = 0; index < repeat; index += 1) {
+    const result = await callJobsApi(
+      "enqueue",
+      {
+        limit: Math.min(desiredLimit, batchSize * (index + 1)),
+        offset: numberArg(args, "offset", 0),
+        includeUndescribed: Boolean(args["include-undescribed"]),
+        includeImageSet: Boolean(args["include-image-set"]),
+        maxAttempts: numberArg(args, "max-attempts", 3),
+      },
+      args,
+    );
+
+    if (
+      result.remainingCapacity === 0 ||
+      result.insertedCount === 0 ||
+      index === repeat - 1 ||
+      intervalMs <= 0
+    ) {
+      continue;
+    }
+
+    await sleep(intervalMs);
   }
 }
 
@@ -332,7 +358,7 @@ function sleep(ms) {
 
 function printHelp() {
   console.log(`Usage:
-  node scripts/series-summary-jobs.mjs enqueue [--limit 100] [--offset 0] [--include-undescribed] [--include-image-set]
+  node scripts/series-summary-jobs.mjs enqueue [--limit 100] [--batch-size 100] [--repeat 1] [--interval-ms 15000] [--offset 0]
   node scripts/series-summary-jobs.mjs import-source-urls --input data/source-urls.csv [--fetch]
   node scripts/series-summary-jobs.mjs collect-sources [--limit 10] [--offset 0] [--no-search] [--refetch]
   node scripts/series-summary-jobs.mjs run [--limit 1] [--repeat 1] [--interval-ms 60000] [--dry-run]
@@ -341,6 +367,9 @@ function printHelp() {
 
 Options:
   --base-url URL              Default: ${DEFAULT_BASE_URL}
+  --batch-size N              enqueue grows the desired queue size by N per request.
+  --repeat N                  Repeat enqueue/run requests.
+  --interval-ms N             Wait after a response before the next repeated request.
   --include-undescribed       Also enqueue series without description.
   --include-image-set         Enqueue series that already have representative_image_path.
   --accept-low-confidence     Accept low confidence summaries.

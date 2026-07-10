@@ -229,7 +229,7 @@ async function enqueueSummaryJobs(request: Request) {
   let insertedCount = 0;
 
   for (let index = 0; index < jobs.length; index += 500) {
-    const inserted = await insertJobsIndividually(
+    const inserted = await insertJobsInBatch(
       supabase,
       jobs.slice(index, index + 500),
     );
@@ -848,7 +848,7 @@ async function clearSummaryJobs(request: Request) {
   };
 }
 
-async function insertJobsIndividually(
+async function insertJobsInBatch(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   jobs: Array<{
     series_id: string;
@@ -857,22 +857,23 @@ async function insertJobsIndividually(
     updated_at: string;
   }>,
 ) {
-  let insertedCount = 0;
-
-  for (const job of jobs) {
-    const { error } = await supabase.from("series_summary_jobs").insert(job);
-
-    if (!error) {
-      insertedCount += 1;
-      continue;
-    }
-
-    if (error.code !== "23505") {
-      throw error;
-    }
+  if (jobs.length === 0) {
+    return 0;
   }
 
-  return insertedCount;
+  const { data, error } = await supabase
+    .from("series_summary_jobs")
+    .upsert(jobs, {
+      onConflict: "series_id",
+      ignoreDuplicates: true,
+    })
+    .select("id");
+
+  if (error) {
+    throw error;
+  }
+
+  return data?.length ?? 0;
 }
 
 async function countIncompleteSummaryJobs(
