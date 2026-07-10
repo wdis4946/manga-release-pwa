@@ -1405,14 +1405,11 @@ function isLikelyCrawlerSourceUrl(url: string) {
 
   const path = parsed.pathname;
 
-  if (
-    domain === "shogakukan-comic.jp" &&
-    !(
+  if (domain === "shogakukan-comic.jp") {
+    return (
       path === "/book" &&
       (parsed.searchParams.has("isbn") || parsed.searchParams.has("jdcn"))
-    )
-  ) {
-    return false;
+    );
   }
 
   if (
