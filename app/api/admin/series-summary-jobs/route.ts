@@ -11,7 +11,7 @@ const MAX_ENQUEUE_LIMIT = 5000;
 const MAX_WORKER_LIMIT = 10;
 const MAX_SOURCE_COLLECT_LIMIT = 50;
 const MAX_SOURCES_PER_SERIES = 8;
-const MAX_CRAWLER_SEARCH_PAGES_PER_SERIES = 5;
+const MAX_CRAWLER_SEARCH_PAGES_PER_SERIES = 12;
 const MAX_SOURCE_TEXT_LENGTH = 5000;
 const MAX_SOURCE_CONTEXT_LENGTH = 16000;
 const MIN_SUMMARY_LENGTH = 300;
@@ -1181,26 +1181,21 @@ async function crawlPublisherSearchUrls(
   context: SeriesContext | undefined,
   isbns: string[],
 ) {
-  const title = series.display_title || series.search_title;
-  const author = context?.authors[0];
-  const baseQuery = uniqueStrings([title, series.search_title, author]).join(
-    " ",
-  );
+  const searchQueries = buildCrawlerSearchQueries(series, context, isbns);
 
-  if (!baseQuery) {
+  if (searchQueries.length === 0) {
     return [];
   }
 
-  const searchPages = publisherSearchPages(baseQuery, context, isbns).slice(
-    0,
-    MAX_CRAWLER_SEARCH_PAGES_PER_SERIES,
-  );
+  const searchPages = searchQueries
+    .flatMap((query) => publisherSearchPages(query, context, isbns))
+    .slice(0, MAX_CRAWLER_SEARCH_PAGES_PER_SERIES);
   const urls: string[] = [];
 
   for (const searchPage of searchPages) {
     try {
       const html = await fetchHtml(searchPage.url);
-      const pageLinks = extractLinks(html, searchPage.url);
+      const pageLinks = extractCrawlerSearchResultLinks(html, searchPage.url);
       urls.push(
         ...expandCrawlerSourceUrls(pageLinks).filter(
           (url) =>
@@ -1220,6 +1215,55 @@ async function crawlPublisherSearchUrls(
   return urls;
 }
 
+function buildCrawlerSearchQueries(
+  series: SeriesRow,
+  context: SeriesContext | undefined,
+  isbns: string[],
+) {
+  const title = series.display_title || series.search_title;
+  const strippedTitle = stripBracketedSubtitle(title);
+  const author = context?.authors[0];
+  const normalizedIsbns = uniqueStrings(
+    isbns.flatMap((isbn) => {
+      const normalized = normalizeIsbn(isbn);
+      const isbn13 =
+        normalized?.length === 13
+          ? normalized
+          : normalized
+            ? isbn10ToIsbn13(normalized)
+            : null;
+      const isbn10 = normalized ? isbn13ToIsbn10(normalized) : null;
+
+      return [isbn13, isbn10];
+    }),
+  );
+
+  return uniqueStrings([
+    uniqueStrings([title, series.search_title, author]).join(" "),
+    uniqueStrings([strippedTitle, author]).join(" "),
+    title,
+    strippedTitle,
+    ...normalizedIsbns.slice(0, 2),
+  ]).filter((query) => query.length > 0);
+}
+
+function extractCrawlerSearchResultLinks(html: string, baseUrl: string) {
+  const links = extractLinks(html, baseUrl);
+  const unescapedHtml = decodeHtmlEntities(html).replace(/\\\//g, "/");
+  const absoluteUrlPattern = /https?:\/\/[^\s"'<>\\)]+/g;
+  let match: RegExpExecArray | null;
+
+  while ((match = absoluteUrlPattern.exec(unescapedHtml))) {
+    const normalized = normalizeUrl(match[0] ?? "");
+
+    if (normalized) {
+      links.push(normalized);
+    }
+  }
+
+  return uniqueStrings(links);
+}
+
 function expandCrawlerSourceUrls(urls: string[]) {
   const expanded = [...urls];
 
@@ -1228,9 +1272,18 @@ function expandCrawlerSourceUrls(urls: string[]) {
       const parsed = new URL(url);
       const domain = parsed.hostname.toLowerCase();
       const productId = parsed.pathname.match(/^\/product\/([^/]+)\/?$/)?.[1];
+      const kodanshaMangaIpId = parsed.pathname.match(
+        /^\/mangaip\/database\/([^/]+)\/?$/,
+      )?.[1];
 
       if (domain === "www.kadokawa.co.jp" && productId) {
         expanded.push(`https://store.kadokawa.co.jp/shop/g/g${productId}/`);
+      }
+
+      if (domain === "cstation.kodansha.co.jp" && kodanshaMangaIpId) {
+        expanded.push(
+          `https://www.kodansha.co.jp/comic/products/${kodanshaMangaIpId}`,
+        );
       }
     } catch {
       // Ignore malformed crawler result links.
@@ -1254,9 +1307,29 @@ function publisherSearchPages(
       allowedDomains: ["kodansha.co.jp", "shonenmagazine.com"],
     },
     {
+      id: "kodansha",
+      url: `https://www.kodansha.co.jp/search?q=${encoded}`,
+      allowedDomains: ["kodansha.co.jp", "shonenmagazine.com"],
+    },
+    {
+      id: "kodansha",
+      url: `https://cstation.kodansha.co.jp/search?keyword=${encoded}`,
+      allowedDomains: ["kodansha.co.jp", "cstation.kodansha.co.jp"],
+    },
+    {
       id: "kadokawa",
       url: `https://www.kadokawa.co.jp/search?kw=${encoded}`,
       allowedDomains: ["kadokawa.co.jp", "dragonage-comic.com", "comic-alive.jp"],
+    },
+    {
+      id: "kadokawa",
+      url: `https://www.kadokawa.co.jp/search?keyword=${encoded}`,
+      allowedDomains: ["kadokawa.co.jp", "dragonage-comic.com", "comic-alive.jp"],
+    },
+    {
+      id: "kadokawa",
+      url: `https://store.kadokawa.co.jp/shop/goods/search.aspx?keyword=${encoded}`,
+      allowedDomains: ["kadokawa.co.jp", "store.kadokawa.co.jp"],
     },
     {
       id: "akita",
@@ -1317,6 +1390,13 @@ function isLikelyCrawlerSourceUrl(url: string) {
   if (
     domain === "www.kodansha.co.jp" &&
     /^\/(comic\/products|titles)\/[^/]+\/?$/.test(path)
+  ) {
+    return true;
+  }
+
+  if (
+    domain === "cstation.kodansha.co.jp" &&
+    /^\/mangaip\/database\/[^/]+\/?$/.test(path)
   ) {
     return true;
   }
