@@ -158,13 +158,20 @@ async function enqueueSummaryJobs(request: Request) {
   const offset = Math.max(0, Math.floor(body.offset ?? 0));
   const maxAttempts = clampPositiveInteger(body.maxAttempts ?? 3, 10);
   const supabase = createSupabaseAdminClient();
-  const seriesRows = await fetchTargetSeries({
-    supabase,
-    limit,
-    offset,
-    includeUndescribed: body.includeUndescribed === true,
-    includeImageSet: body.includeImageSet === true,
-  });
+  const activeJobCount = await countIncompleteSummaryJobs(supabase);
+  const remainingCapacity = Math.max(0, limit - activeJobCount);
+  const existingJobSeriesIds = await fetchSummaryJobSeriesIdSet(supabase);
+  const seriesRows =
+    remainingCapacity > 0
+      ? await fetchTargetSeriesForEnqueue({
+          supabase,
+          limit: remainingCapacity,
+          offset,
+          includeUndescribed: body.includeUndescribed === true,
+          includeImageSet: body.includeImageSet === true,
+          excludedSeriesIds: existingJobSeriesIds,
+        })
+      : [];
   const jobs = seriesRows.map((series) => ({
     series_id: series.id,
     status: "pending",
@@ -189,7 +196,11 @@ async function enqueueSummaryJobs(request: Request) {
     includeUndescribed: body.includeUndescribed === true,
     includeImageSet: body.includeImageSet === true,
     defaultFilter: "description_present_and_representative_image_missing",
-    targetCount: seriesRows.length,
+    activeJobCountBefore: activeJobCount,
+    desiredActiveJobCount: limit,
+    remainingCapacity,
+    candidateCount: seriesRows.length,
+    targetCount: activeJobCount + insertedCount,
     insertedCount,
     skippedExistingCount: seriesRows.length - insertedCount,
   };
@@ -670,6 +681,102 @@ async function insertJobsIndividually(
   }
 
   return insertedCount;
+}
+
+async function countIncompleteSummaryJobs(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+) {
+  const { count, error } = await supabase
+    .from("series_summary_jobs")
+    .select("id", { count: "exact", head: true })
+    .neq("status", "completed");
+
+  if (error) {
+    throw error;
+  }
+
+  return count ?? 0;
+}
+
+async function fetchSummaryJobSeriesIdSet(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+) {
+  const seriesIds = new Set<string>();
+  const pageSize = 1000;
+
+  for (let offset = 0; ; offset += pageSize) {
+    const { data, error } = await supabase
+      .from("series_summary_jobs")
+      .select("series_id")
+      .range(offset, offset + pageSize - 1);
+
+    if (error) {
+      throw error;
+    }
+
+    for (const row of data ?? []) {
+      if (row.series_id) {
+        seriesIds.add(row.series_id);
+      }
+    }
+
+    if (!data || data.length < pageSize) {
+      break;
+    }
+  }
+
+  return seriesIds;
+}
+
+async function fetchTargetSeriesForEnqueue({
+  supabase,
+  limit,
+  offset,
+  includeUndescribed,
+  includeImageSet,
+  excludedSeriesIds,
+}: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>;
+  limit: number;
+  offset: number;
+  includeUndescribed: boolean;
+  includeImageSet: boolean;
+  excludedSeriesIds: Set<string>;
+}) {
+  const selected: SeriesRow[] = [];
+  const pageSize = Math.min(500, Math.max(100, limit * 3));
+  let currentOffset = offset;
+
+  while (selected.length < limit) {
+    const page = await fetchTargetSeries({
+      supabase,
+      limit: pageSize,
+      offset: currentOffset,
+      includeUndescribed,
+      includeImageSet,
+    });
+
+    if (page.length === 0) {
+      break;
+    }
+
+    for (const series of page) {
+      if (excludedSeriesIds.has(series.id)) {
+        continue;
+      }
+
+      selected.push(series);
+      excludedSeriesIds.add(series.id);
+
+      if (selected.length >= limit) {
+        break;
+      }
+    }
+
+    currentOffset += pageSize;
+  }
+
+  return selected;
 }
 
 async function fetchTargetSeries({

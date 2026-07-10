@@ -70,6 +70,12 @@ node scripts/series-summary-jobs.mjs collect-sources --limit 20 --refetch
 
 ## 3. あらすじ生成
 
+対象シリーズをジョブへ積みます。`completed` は履歴として残し、`completed` 以外のジョブ数が `--limit` 件になるように不足分だけ追加します。
+
+```powershell
+node scripts/series-summary-jobs.mjs enqueue --limit 100
+```
+
 デフォルトでは保存済みソースだけを使い、OpenAIのWeb検索は使いません。
 
 ```powershell
