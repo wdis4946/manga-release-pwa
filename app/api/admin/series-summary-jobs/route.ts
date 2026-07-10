@@ -1103,7 +1103,9 @@ async function googleSearch(query: string) {
   });
 
   if (!response.ok) {
-    throw new Error(`Google Search failed: ${response.status}`);
+    throw new Error(
+      `Google Search failed: ${response.status} ${await response.text()}`,
+    );
   }
 
   const body = (await response.json()) as {
