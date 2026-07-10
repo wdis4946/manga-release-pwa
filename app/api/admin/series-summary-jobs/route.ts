@@ -55,6 +55,12 @@ type ClaimedJob = {
   max_attempts: number;
 };
 
+type SourceCollectionJob = {
+  id: string;
+  series_id: string;
+  status: string;
+};
+
 type SeriesContext = {
   authors: string[];
   publishers: string[];
@@ -416,6 +422,8 @@ async function getSummaryJobStatus() {
   const supabase = createSupabaseAdminClient();
   const statuses = [
     "pending",
+    "sources_collected",
+    "source_collection_failed",
     "processing",
     "completed",
     "needs_review",
@@ -463,6 +471,7 @@ async function collectSummarySources(request: Request) {
     includeImageSet?: boolean;
     search?: boolean;
     refetch?: boolean;
+    useJobs?: boolean;
   };
   const limit = clampPositiveInteger(
     body.limit ?? 10,
@@ -470,23 +479,40 @@ async function collectSummarySources(request: Request) {
   );
   const offset = Math.max(0, Math.floor(body.offset ?? 0));
   const supabase = createSupabaseAdminClient();
-  const seriesRows = await fetchTargetSeries({
-    supabase,
-    limit,
-    offset,
-    includeUndescribed: body.includeUndescribed === true,
-    includeImageSet: body.includeImageSet === true,
-  });
+  const useJobs = body.useJobs !== false;
+  const sourceJobs = useJobs
+    ? await fetchPendingSourceCollectionJobs({ supabase, limit, offset })
+    : [];
+  const jobBySeriesId = new Map(
+    sourceJobs.map((job) => [job.series_id, job]),
+  );
+  const seriesRows = useJobs
+    ? await fetchSeriesRowsByIds(
+        supabase,
+        sourceJobs.map((job) => job.series_id),
+      )
+    : await fetchTargetSeries({
+        supabase,
+        limit,
+        offset,
+        includeUndescribed: body.includeUndescribed === true,
+        includeImageSet: body.includeImageSet === true,
+      });
+  const sortedSeriesRows = useJobs
+    ? sourceJobs
+        .map((job) => seriesRows.find((series) => series.id === job.series_id))
+        .filter((series): series is SeriesRow => Boolean(series))
+    : seriesRows;
   const context = await fetchSeriesContext(
     supabase,
-    seriesRows.map((series) => series.id),
+    sortedSeriesRows.map((series) => series.id),
   );
   const sourceProvider = getSourceDiscoveryProvider(body.search !== false);
   const isbnsBySeriesId =
     sourceProvider === "crawler"
       ? await fetchSeriesIsbns(
           supabase,
-          seriesRows.map((series) => series.id),
+          sortedSeriesRows.map((series) => series.id),
         )
       : new Map<string, string[]>();
   const results = [];
@@ -494,7 +520,8 @@ async function collectSummarySources(request: Request) {
   let fetchedCount = 0;
   let failedCount = 0;
 
-  for (const series of seriesRows) {
+  for (const series of sortedSeriesRows) {
+    const sourceJob = jobBySeriesId.get(series.id);
     const seriesContext = context.get(series.id);
     const isbns = isbnsBySeriesId.get(series.id) ?? [];
     const publisherCandidates =
@@ -561,11 +588,37 @@ async function collectSummarySources(request: Request) {
       });
     }
 
+    const collectionStatus = sourceResults.some(
+      (source) => source.status === "fetched" || source.status === "skipped",
+    )
+      ? "sources_collected"
+      : "source_collection_failed";
+    const collectedSourceUrls = sourceResults
+      .filter(
+        (source) => source.status === "fetched" || source.status === "skipped",
+      )
+      .map((source) => source.url);
+
+    if (sourceJob) {
+      await markSourceCollectionJob({
+        supabase,
+        jobId: sourceJob.id,
+        status: collectionStatus,
+        sourceUrls: collectedSourceUrls,
+        errorMessage:
+          collectionStatus === "source_collection_failed"
+            ? firstSourceCollectionError(sourceResults)
+            : null,
+      });
+    }
+
     results.push({
+      jobId: sourceJob?.id,
       seriesId: series.id,
       title: series.display_title,
       isbns,
       publisherCandidates,
+      collectionStatus,
       isbnDirectUrls: discoveredSourceDetails.directUrls,
       searchResultUrls: discoveredSourceDetails.searchUrls,
       discoveredUrls: discoveredSourceDetails.urls,
@@ -581,9 +634,10 @@ async function collectSummarySources(request: Request) {
     mode: "collect-sources",
     limit,
     offset,
+    useJobs,
     searchEnabled: sourceProvider !== "none",
     sourceProvider,
-    targetCount: seriesRows.length,
+    targetCount: sortedSeriesRows.length,
     discoveredUrlCount,
     fetchedCount,
     failedCount,
@@ -649,6 +703,70 @@ async function importSummarySourceUrls(request: Request) {
   };
 }
 
+async function fetchPendingSourceCollectionJobs({
+  supabase,
+  limit,
+  offset,
+}: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>;
+  limit: number;
+  offset: number;
+}) {
+  const { data, error } = await supabase
+    .from("series_summary_jobs")
+    .select("id, series_id, status")
+    .eq("status", "pending")
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as SourceCollectionJob[];
+}
+
+async function markSourceCollectionJob({
+  supabase,
+  jobId,
+  status,
+  sourceUrls,
+  errorMessage,
+}: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>;
+  jobId: string;
+  status: "sources_collected" | "source_collection_failed";
+  sourceUrls: string[];
+  errorMessage: string | null;
+}) {
+  const { error } = await supabase
+    .from("series_summary_jobs")
+    .update({
+      status,
+      source_urls: sourceUrls,
+      error_message: errorMessage,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", jobId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+function firstSourceCollectionError(
+  sourceResults: Array<{
+    status: string;
+    errorMessage?: string | null;
+  }>,
+) {
+  return (
+    sourceResults.find((source) => source.errorMessage)?.errorMessage ??
+    "No usable summary source was collected."
+  );
+}
+
 async function clearSummaryJobs(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     all?: boolean;
@@ -656,6 +774,8 @@ async function clearSummaryJobs(request: Request) {
   };
   const allowedStatuses = [
     "pending",
+    "sources_collected",
+    "source_collection_failed",
     "processing",
     "completed",
     "needs_review",
