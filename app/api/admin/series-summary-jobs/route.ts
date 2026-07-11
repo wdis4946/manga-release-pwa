@@ -1167,12 +1167,12 @@ async function fetchUsableSummarySources(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   seriesIds: string[],
 ) {
-  const sourcesBySeriesId = new Map<string, SeriesSummarySource[]>(
+  const rawSourcesBySeriesId = new Map<string, SeriesSummarySource[]>(
     seriesIds.map((seriesId) => [seriesId, []]),
   );
 
   if (seriesIds.length === 0) {
-    return sourcesBySeriesId;
+    return rawSourcesBySeriesId;
   }
 
   for (let index = 0; index < seriesIds.length; index += 200) {
@@ -1193,15 +1193,62 @@ async function fetchUsableSummarySources(
     }
 
     for (const source of (data ?? []) as SeriesSummarySource[]) {
-      const sources = sourcesBySeriesId.get(source.series_id);
+      const sources = rawSourcesBySeriesId.get(source.series_id);
 
-      if (sources && sources.length < MAX_SOURCES_PER_SERIES) {
+      if (sources) {
         sources.push(source);
       }
     }
   }
 
+  const sourcesBySeriesId = new Map<string, SeriesSummarySource[]>();
+
+  for (const [seriesId, sources] of rawSourcesBySeriesId) {
+    sourcesBySeriesId.set(seriesId, selectSummarySources(sources));
+  }
+
   return sourcesBySeriesId;
+}
+
+function selectSummarySources(sources: SeriesSummarySource[]) {
+  const sortedSources = [...sources].sort(compareSummarySources);
+  const selected: SeriesSummarySource[] = [];
+  const selectedIds = new Set<string>();
+
+  const addSource = (source: SeriesSummarySource | undefined) => {
+    if (!source || selectedIds.has(source.id) || selected.length >= MAX_SOURCES_PER_SERIES) {
+      return;
+    }
+
+    selected.push(source);
+    selectedIds.add(source.id);
+  };
+
+  addSource(
+    sortedSources.find((source) =>
+      ["publisher_official", "official_site"].includes(source.source_type),
+    ),
+  );
+  addSource(
+    sortedSources.find(
+      (source) =>
+        source.domain === "ja.wikipedia.org" ||
+        source.source_type === "reference_database",
+    ),
+  );
+
+  for (const source of sortedSources) {
+    addSource(source);
+  }
+
+  return selected;
+}
+
+function compareSummarySources(
+  left: SeriesSummarySource,
+  right: SeriesSummarySource,
+) {
+  return right.score - left.score || left.id.localeCompare(right.id);
 }
 
 async function fetchSummarySourcesForSeries(
@@ -2612,6 +2659,14 @@ async function createSeriesSummary({
           "参考情報をそのままコピーせず、必ず言い換えて再構成してください。",
           "あらすじ本文には、引用文、引用符、出典名、URL、参考文献のような記述を含めないでください。",
           "文体は漫画紹介文らしく、少しドラマチックにしてください。",
+          "文体は以下の型を参考にしてください。ただし、型をそのまま機械的に当てはめず、作品ごとに語り出し、段落の展開、接続、締め方にバリエーションを持たせてください。",
+          "参考情報にない設定や固有名詞は補完せず、確認できる内容に合わせて自然な文章へ調整してください。",
+          "『作品名』は、〇〇を舞台に、〇〇が〇〇していく姿を描く、作者名による〇〇漫画。",
+          "主人公の〇〇は、〇〇として暮らしていた人物。ある日、〇〇との出会いや事件をきっかけに、平穏だった日常が大きく変わっていく。",
+          "やがて〇〇は、仲間との出会い、敵との衝突、過去の秘密、避けられない選択に向き合うことになる。",
+          "〇〇と〇〇が交錯する中で、主人公は少しずつ成長し、自分の進むべき道を見つけていく。",
+          "最後の段落は、その作品の魅力やジャンル感を客観的にまとめる締めにしてください。",
+          "毎回同じ言い回しや同じ文の並びにしないでください。冒頭文は必ずしも同じ構文にせず、作品のジャンルや導入に合う形で変化をつけてください。",
           "ただし煽りすぎず、落ち着いた紹介文にしてください。",
           "「〇〇が見どころ」「読み応えのある一作」のような主観的な評価表現は使わず、確認できる内容に基づいて魅力を説明してください。",
           "短い文を連続して並べず、文の長短や接続に緩急をつけて、自然な流れのある文章にしてください。",
@@ -2638,6 +2693,7 @@ async function createSeriesSummary({
           `publishers: ${formatList(context?.publishers)}`,
           `imprints: ${formatList(context?.imprints)}`,
           `genres: ${formatList(context?.genres)}`,
+          "source_usage_policy: If both publisher_official/official_site sources and ja.wikipedia.org/reference_database sources are present, use both. Prefer official sources for publication and product facts, and use Wikipedia as supplementary context for setting, characters, and overview.",
           `source_materials:\n${sourceContext}`,
         ].join("\n"),
       },
