@@ -17,8 +17,19 @@ async function main() {
   const args = parseArgs(rest);
 
   switch (command) {
+    case "enqueue":
+      await callCoverJobsApi("enqueue", {
+        limit: numberArg(args, "limit", positionalNumberArg(args, 0, 100)),
+        offset: numberArg(args, "offset", 0),
+        includeImageSet: Boolean(args["include-image-set"]),
+        maxAttempts: numberArg(args, "max-attempts", 1),
+      }, args);
+      break;
     case "run":
       await runRepeatedly(args);
+      break;
+    case "status":
+      await callCoverJobsApi("status", {}, args);
       break;
     case "help":
     case undefined:
@@ -30,17 +41,21 @@ async function main() {
 }
 
 async function runRepeatedly(args) {
-  const repeat = numberArg(args, "repeat", 1);
-  const intervalMs = numberArg(args, "interval-ms", 0);
+  const repeat = numberArg(args, "repeat", positionalNumberArg(args, 1, 1));
+  const intervalMs = numberArg(
+    args,
+    "interval-ms",
+    positionalNumberArg(args, 2, 0),
+  );
 
   for (let index = 0; index < repeat; index += 1) {
+    console.error(`series-cover run ${index + 1}/${repeat}`);
+
     const result = await callCoverJobsApi(
       "run",
       {
-        limit: numberArg(args, "limit", 5),
-        offset: numberArg(args, "offset", 0),
+        limit: numberArg(args, "limit", positionalNumberArg(args, 0, 5)),
         dryRun: Boolean(args["dry-run"]),
-        includeImageSet: Boolean(args["include-image-set"]),
       },
       args,
     );
@@ -50,6 +65,10 @@ async function runRepeatedly(args) {
       index === repeat - 1 ||
       intervalMs <= 0
     ) {
+      if (result.targetCount === 0) {
+        console.error("series-cover run stopped: no target series.");
+        break;
+      }
       continue;
     }
 
@@ -95,12 +114,13 @@ async function callCoverJobsApi(mode, body, args) {
 }
 
 function parseArgs(values) {
-  const args = {};
+  const args = { _: [] };
 
   for (let index = 0; index < values.length; index += 1) {
     const value = values[index];
 
     if (!value.startsWith("--")) {
+      args._.push(value);
       continue;
     }
 
@@ -131,6 +151,22 @@ function numberArg(args, name, defaultValue) {
 
   if (!Number.isFinite(numberValue)) {
     throw new Error(`--${name} must be a number.`);
+  }
+
+  return numberValue;
+}
+
+function positionalNumberArg(args, index, defaultValue) {
+  const value = args._?.[index];
+
+  if (value === undefined) {
+    return defaultValue;
+  }
+
+  const numberValue = Number(value);
+
+  if (!Number.isFinite(numberValue)) {
+    return defaultValue;
   }
 
   return numberValue;
@@ -190,16 +226,20 @@ function sleep(ms) {
 
 function printHelp() {
   console.log(`Usage:
-  node scripts/series-cover-jobs.mjs run [--limit 5] [--offset 0] [--repeat 1] [--interval-ms 15000] [--dry-run]
+  node scripts/series-cover-jobs.mjs enqueue [--limit 100] [--offset 0]
+  node scripts/series-cover-jobs.mjs run [--limit 5] [--repeat 1] [--interval-ms 15000] [--dry-run]
+  node scripts/series-cover-jobs.mjs run 5 100 15000
+  node scripts/series-cover-jobs.mjs status
 
 Options:
   --base-url URL          Default: ${DEFAULT_BASE_URL}
-  --limit N               Number of series to process per request. API max is 20.
-  --offset N              Skip N target series.
+  --limit N               Number of series/jobs to enqueue or process.
+  --offset N              Skip N target series when enqueueing.
   --repeat N              Repeat requests.
   --interval-ms N         Wait after a response before the next repeated request.
   --dry-run               Find cover candidates without uploading/updating DB.
-  --include-image-set     Also process series that already have representative_image_path.
+  --include-image-set     Enqueue series that already have representative_image_path.
+  --max-attempts N         Max attempts stored on enqueued jobs. Default: 1.
 
 Environment:
   CRON_SECRET is loaded from .env.local or .env.

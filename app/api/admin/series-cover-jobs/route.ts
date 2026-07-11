@@ -41,6 +41,14 @@ type ImageCandidate = {
   reason: string;
 };
 
+type CoverJob = {
+  id: string;
+  series_id: string;
+  status: string;
+  attempts: number;
+  max_attempts: number;
+};
+
 export async function POST(request: Request) {
   const authError = authorizeCronRequest(request);
 
@@ -51,12 +59,20 @@ export async function POST(request: Request) {
   const mode = new URL(request.url).searchParams.get("mode");
 
   try {
+    if (mode === "enqueue") {
+      return Response.json(await enqueueSeriesCoverJobs(request));
+    }
+
     if (mode === "run") {
       return Response.json(await runSeriesCoverJobs(request));
     }
 
+    if (mode === "status") {
+      return Response.json(await getSeriesCoverJobStatus());
+    }
+
     return Response.json(
-      { ok: false, error: "mode must be run." },
+      { ok: false, error: "mode must be enqueue, run, or status." },
       { status: 400 },
     );
   } catch (error) {
@@ -71,23 +87,83 @@ export async function POST(request: Request) {
   }
 }
 
-async function runSeriesCoverJobs(request: Request) {
+async function enqueueSeriesCoverJobs(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     limit?: number;
     offset?: number;
-    dryRun?: boolean;
     includeImageSet?: boolean;
+    maxAttempts?: number;
   };
-  const limit = clampPositiveInteger(body.limit ?? 5, MAX_LIMIT);
+  const limit = clampPositiveInteger(body.limit ?? 100, 5000);
   const offset = clampNonNegativeInteger(body.offset ?? 0);
-  const dryRun = body.dryRun === true;
+  const maxAttempts = clampPositiveInteger(body.maxAttempts ?? 1, 10);
   const supabase = createSupabaseAdminClient();
-  const seriesRows = await fetchTargetSeries({
-    supabase,
+  let insertedCount = 0;
+  let targetCount = 0;
+  let currentOffset = offset;
+
+  for (let page = 0; page < 20 && insertedCount < limit; page += 1) {
+    const seriesRows = await fetchTargetSeries({
+      supabase,
+      limit: Math.min(Math.max((limit - insertedCount) * 2, 50), 500),
+      offset: currentOffset,
+      includeImageSet: body.includeImageSet === true,
+    });
+
+    if (seriesRows.length === 0) {
+      break;
+    }
+
+    targetCount += seriesRows.length;
+    currentOffset += seriesRows.length;
+
+    const now = new Date().toISOString();
+    const rows = seriesRows.slice(0, limit - insertedCount).map((series) => ({
+      series_id: series.id,
+      status: "pending",
+      max_attempts: maxAttempts,
+      updated_at: now,
+    }));
+    const { data, error } = await supabase
+      .from("series_cover_jobs")
+      .upsert(rows, {
+        onConflict: "series_id",
+        ignoreDuplicates: true,
+      })
+      .select("id");
+
+    if (error) {
+      throw error;
+    }
+
+    insertedCount += data?.length ?? 0;
+  }
+
+  return {
+    ok: true,
+    mode: "enqueue",
     limit,
     offset,
     includeImageSet: body.includeImageSet === true,
-  });
+    targetCount,
+    insertedCount,
+  };
+}
+
+async function runSeriesCoverJobs(request: Request) {
+  const body = (await request.json().catch(() => ({}))) as {
+    limit?: number;
+    dryRun?: boolean;
+  };
+  const limit = clampPositiveInteger(body.limit ?? 5, MAX_LIMIT);
+  const dryRun = body.dryRun === true;
+  const supabase = createSupabaseAdminClient();
+  const jobs = await claimPendingCoverJobs(supabase, limit);
+  const seriesRows = await fetchSeriesRowsByIds(
+    supabase,
+    jobs.map((job) => job.series_id),
+  );
+  const seriesById = new Map(seriesRows.map((series) => [series.id, series]));
   const contexts = await fetchSeriesContext(
     supabase,
     seriesRows.map((series) => series.id),
@@ -104,7 +180,45 @@ async function runSeriesCoverJobs(request: Request) {
   let updatedCount = 0;
   let failedCount = 0;
 
-  for (const series of seriesRows) {
+  for (const job of jobs) {
+    const series = seriesById.get(job.series_id);
+
+    if (!series) {
+      await markCoverJobFailed({
+        supabase,
+        job,
+        errorMessage: "Series was not found.",
+      });
+      failedCount += 1;
+      results.push({
+        jobId: job.id,
+        seriesId: job.series_id,
+        status: "failed",
+        error: "Series was not found.",
+      });
+      continue;
+    }
+
+    if (series.representative_image_path) {
+      await markCoverJobCompleted({
+        supabase,
+        jobId: job.id,
+        result: {
+          status: "skipped",
+          reason: "representative_image_path is already set.",
+          representativeImagePath: series.representative_image_path,
+        },
+      });
+      results.push({
+        jobId: job.id,
+        seriesId: series.id,
+        title: series.display_title,
+        status: "skipped",
+        reason: "representative_image_path is already set.",
+      });
+      continue;
+    }
+
     const context = contexts.get(series.id);
     const isbns = isbnsBySeriesId.get(series.id) ?? [];
 
@@ -117,8 +231,18 @@ async function runSeriesCoverJobs(request: Request) {
       });
 
       if (sourceUrls.length === 0) {
+        if (dryRun) {
+          await resetCoverJobPending({ supabase, job });
+        } else {
+          await markCoverJobFailed({
+            supabase,
+            job,
+            errorMessage: "No official page URL was found.",
+          });
+        }
         failedCount += 1;
         results.push({
+          jobId: job.id,
           seriesId: series.id,
           title: series.display_title,
           status: "failed",
@@ -134,8 +258,23 @@ async function runSeriesCoverJobs(request: Request) {
       });
 
       if (!cover) {
+        if (dryRun) {
+          await resetCoverJobPending({
+            supabase,
+            job,
+            result: { status: "dry_run_failed", sourceUrls },
+          });
+        } else {
+          await markCoverJobFailed({
+            supabase,
+            job,
+            errorMessage: "No usable cover image was found.",
+            result: { sourceUrls },
+          });
+        }
         failedCount += 1;
         results.push({
+          jobId: job.id,
           seriesId: series.id,
           title: series.display_title,
           status: "failed",
@@ -146,7 +285,18 @@ async function runSeriesCoverJobs(request: Request) {
       }
 
       if (dryRun) {
+        await resetCoverJobPending({
+          supabase,
+          job,
+          result: {
+            status: "dry_run",
+            sourceUrl: cover.sourceUrl,
+            imageUrl: cover.imageUrl,
+            score: cover.score,
+          },
+        });
         results.push({
+          jobId: job.id,
           seriesId: series.id,
           title: series.display_title,
           status: "dry_run",
@@ -162,8 +312,20 @@ async function runSeriesCoverJobs(request: Request) {
         series,
         imageUrl: cover.imageUrl,
       });
+      await markCoverJobCompleted({
+        supabase,
+        jobId: job.id,
+        result: {
+          status: "updated",
+          sourceUrl: cover.sourceUrl,
+          imageUrl: cover.imageUrl,
+          score: cover.score,
+          representativeImagePath: uploaded.path,
+        },
+      });
       updatedCount += 1;
       results.push({
+        jobId: job.id,
         seriesId: series.id,
         title: series.display_title,
         status: "updated",
@@ -174,8 +336,18 @@ async function runSeriesCoverJobs(request: Request) {
         representativeImageUrl: uploaded.url,
       });
     } catch (error) {
+      if (dryRun) {
+        await resetCoverJobPending({ supabase, job });
+      } else {
+        await markCoverJobFailed({
+          supabase,
+          job,
+          errorMessage: error instanceof Error ? error.message : "Unknown error.",
+        });
+      }
       failedCount += 1;
       results.push({
+        jobId: job.id,
         seriesId: series.id,
         title: series.display_title,
         status: "failed",
@@ -188,12 +360,37 @@ async function runSeriesCoverJobs(request: Request) {
     ok: true,
     mode: "run",
     limit,
-    offset,
     dryRun,
-    targetCount: seriesRows.length,
+    targetCount: jobs.length,
+    claimedCount: jobs.length,
     updatedCount,
     failedCount,
     results,
+  };
+}
+
+async function getSeriesCoverJobStatus() {
+  const supabase = createSupabaseAdminClient();
+  const statuses = ["pending", "processing", "completed", "failed"];
+  const counts: Record<string, number> = {};
+
+  for (const status of statuses) {
+    const { count, error } = await supabase
+      .from("series_cover_jobs")
+      .select("id", { count: "exact", head: true })
+      .eq("status", status);
+
+    if (error) {
+      throw error;
+    }
+
+    counts[status] = count ?? 0;
+  }
+
+  return {
+    ok: true,
+    mode: "status",
+    counts,
   };
 }
 
@@ -226,6 +423,157 @@ async function fetchTargetSeries({
   }
 
   return (data ?? []) as SeriesRow[];
+}
+
+async function claimPendingCoverJobs(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  limit: number,
+) {
+  const { data, error } = await supabase
+    .from("series_cover_jobs")
+    .select("id, series_id, status, attempts, max_attempts")
+    .eq("status", "pending")
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .limit(limit);
+
+  if (error) {
+    throw error;
+  }
+
+  const jobs = ((data ?? []) as CoverJob[]).filter(
+    (job) => job.attempts < job.max_attempts,
+  );
+
+  if (jobs.length === 0) {
+    return [];
+  }
+
+  const now = new Date().toISOString();
+  const { error: updateError } = await supabase
+    .from("series_cover_jobs")
+    .upsert(
+      jobs.map((job) => ({
+        id: job.id,
+        series_id: job.series_id,
+        status: "processing",
+        attempts: job.attempts + 1,
+        max_attempts: job.max_attempts,
+        locked_at: now,
+        started_at: now,
+        updated_at: now,
+        error_message: null,
+      })),
+      { onConflict: "id" },
+    );
+
+  if (updateError) {
+    throw updateError;
+  }
+
+  return jobs.map((job) => ({ ...job, attempts: job.attempts + 1 }));
+}
+
+async function fetchSeriesRowsByIds(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  seriesIds: string[],
+) {
+  if (seriesIds.length === 0) {
+    return [];
+  }
+
+  const { data, error } = await supabase
+    .from("series")
+    .select("id, display_title, search_title, representative_image_path")
+    .in("id", seriesIds);
+
+  if (error) {
+    throw error;
+  }
+
+  return (data ?? []) as SeriesRow[];
+}
+
+async function markCoverJobCompleted({
+  supabase,
+  jobId,
+  result,
+}: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>;
+  jobId: string;
+  result: Record<string, unknown>;
+}) {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("series_cover_jobs")
+    .update({
+      status: "completed",
+      locked_at: null,
+      completed_at: now,
+      updated_at: now,
+      error_message: null,
+      result,
+    })
+    .eq("id", jobId);
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function resetCoverJobPending({
+  supabase,
+  job,
+  result,
+}: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>;
+  job: CoverJob;
+  result?: Record<string, unknown>;
+}) {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("series_cover_jobs")
+    .update({
+      status: "pending",
+      attempts: Math.max(job.attempts - 1, 0),
+      locked_at: null,
+      updated_at: now,
+      result: result ?? null,
+    })
+    .eq("id", job.id);
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function markCoverJobFailed({
+  supabase,
+  job,
+  errorMessage,
+  result,
+}: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>;
+  job: CoverJob;
+  errorMessage: string;
+  result?: Record<string, unknown>;
+}) {
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("series_cover_jobs")
+    .update({
+      status: "failed",
+      locked_at: null,
+      completed_at: now,
+      updated_at: now,
+      error_message: errorMessage,
+      result: result ?? null,
+    })
+    .eq("id", job.id);
+
+  if (error) {
+    throw error;
+  }
 }
 
 async function fetchSeriesContext(
