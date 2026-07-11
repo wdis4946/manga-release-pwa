@@ -36,11 +36,7 @@ async function main() {
       }, args);
       break;
     case "batch-apply":
-      await callJobsApi("batch-apply", {
-        batchId: requiredArg(args, "batch"),
-        apply: !Boolean(args["dry-run"]),
-        acceptLowConfidence: Boolean(args["accept-low-confidence"]),
-      }, args);
+      await applyBatchRepeatedly(args);
       break;
     case "collect-sources":
       await callJobsApi("collect-sources", {
@@ -128,6 +124,33 @@ async function runRepeatedly(args) {
 
     if (
       result.claimedCount === 0 ||
+      index === repeat - 1 ||
+      intervalMs <= 0
+    ) {
+      continue;
+    }
+
+    await sleep(intervalMs);
+  }
+}
+
+async function applyBatchRepeatedly(args) {
+  const repeat = numberArg(args, "repeat", 1);
+  const intervalMs = numberArg(args, "interval-ms", 0);
+
+  for (let index = 0; index < repeat; index += 1) {
+    const result = await callJobsApi("batch-apply", {
+      batchId: requiredArg(args, "batch"),
+      limit: optionalNumberArg(args, "limit"),
+      offset: numberArg(args, "offset", 0),
+      apply: !Boolean(args["dry-run"]),
+      acceptLowConfidence: Boolean(args["accept-low-confidence"]),
+      reprocess: Boolean(args.reprocess),
+    }, args);
+
+    if (
+      result.processedCount === 0 ||
+      result.remainingBeforeApply <= result.processedCount ||
       index === repeat - 1 ||
       intervalMs <= 0
     ) {
@@ -312,6 +335,22 @@ function numberArg(args, name, defaultValue) {
   return numberValue;
 }
 
+function optionalNumberArg(args, name) {
+  const value = args[name];
+
+  if (value === undefined || value === true) {
+    return undefined;
+  }
+
+  const numberValue = Number(value);
+
+  if (!Number.isFinite(numberValue)) {
+    throw new Error(`--${name} must be a number.`);
+  }
+
+  return numberValue;
+}
+
 function parseCsvArg(value) {
   if (!value || value === true) {
     return undefined;
@@ -403,7 +442,7 @@ function printHelp() {
   node scripts/series-summary-jobs.mjs run [--limit 1] [--repeat 1] [--interval-ms 60000] [--dry-run]
   node scripts/series-summary-jobs.mjs batch-submit [--limit 100] [--offset 0] [--model MODEL]
   node scripts/series-summary-jobs.mjs batch-status --batch batch_id
-  node scripts/series-summary-jobs.mjs batch-apply --batch batch_id [--dry-run] [--accept-low-confidence]
+  node scripts/series-summary-jobs.mjs batch-apply --batch batch_id [--limit 100] [--repeat 1] [--interval-ms 15000] [--dry-run] [--accept-low-confidence]
   node scripts/series-summary-jobs.mjs status
   node scripts/series-summary-jobs.mjs clear [--statuses pending,processing] [--all]
 
@@ -415,6 +454,7 @@ Options:
   --include-undescribed       Also enqueue series without description.
   --include-image-set         Enqueue series that already have representative_image_path.
   --accept-low-confidence     Accept low confidence summaries.
+  --reprocess                 Re-apply rows even if the job is already completed/needs_review/failed.
   --allow-web-search-fallback Use OpenAI web search only when stored sources are missing.
   --no-search                 collect-sources uses only stored pending URLs.
   --refetch                   Fetch stored source URLs again.

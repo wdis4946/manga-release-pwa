@@ -10,6 +10,7 @@ const DEFAULT_WEB_SEARCH_TOOL_TYPE = "web_search_preview";
 const MAX_ENQUEUE_LIMIT = 5000;
 const MAX_WORKER_LIMIT = 10;
 const MAX_BATCH_SUBMIT_LIMIT = 5000;
+const MAX_BATCH_APPLY_LIMIT = 500;
 const MAX_SOURCE_COLLECT_LIMIT = 50;
 const MAX_SOURCES_PER_SERIES = 8;
 const MAX_CRAWLER_SEARCH_PAGES_PER_SERIES = 12;
@@ -660,10 +661,18 @@ async function getSummaryJobBatchStatus(request: Request) {
 async function applySummaryJobBatch(request: Request) {
   const body = (await request.json().catch(() => ({}))) as {
     batchId?: string;
+    limit?: number;
+    offset?: number;
     apply?: boolean;
     acceptLowConfidence?: boolean;
+    reprocess?: boolean;
   };
   const batchId = body.batchId?.trim();
+  const limit =
+    body.limit === undefined
+      ? null
+      : clampPositiveInteger(body.limit, MAX_BATCH_APPLY_LIMIT);
+  const offset = Math.max(0, Math.floor(body.offset ?? 0));
 
   if (!batchId) {
     throw new Error("batchId is required.");
@@ -689,11 +698,18 @@ async function applySummaryJobBatch(request: Request) {
   const supabase = createSupabaseAdminClient();
   const jobsById = await fetchBatchJobsByOpenAIBatchId(supabase, batchId);
   const output = await downloadOpenAIFile(batch.output_file_id);
-  const rows = output
+  const parsedRows = output
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line, index) => parseBatchOutputLine(line, index + 1));
+  const eligibleRows = body.reprocess === true
+    ? parsedRows
+    : parsedRows.filter((row) => {
+        const { jobId } = parseBatchCustomId(row.customId);
+        return jobId ? jobsById.get(jobId)?.status === "batch_submitted" : true;
+      });
+  const rows = (limit === null ? eligibleRows : eligibleRows.slice(offset, offset + limit));
   const apply = body.apply !== false;
   const results = [];
   let completedCount = 0;
@@ -842,7 +858,11 @@ async function applySummaryJobBatch(request: Request) {
     batchId,
     status: batch.status,
     apply,
-    total: rows.length,
+    limit,
+    offset,
+    total: parsedRows.length,
+    remainingBeforeApply: eligibleRows.length,
+    processedCount: rows.length,
     completedCount,
     needsReviewCount,
     failedCount,

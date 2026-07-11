@@ -9,6 +9,7 @@
     "lint": "eslint",
     "series-summary:batch": "node scripts/openai-series-summaries.mjs",
     "series-summary:jobs": "node scripts/series-summary-jobs.mjs",
+    "series-cover:jobs": "node scripts/series-cover-jobs.mjs",
     "wiki-source:sql": "node scripts/generate-wikipedia-source-sql.mjs"
   },
   "dependencies": {
