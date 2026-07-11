@@ -23,6 +23,25 @@ async function main() {
     case "run":
       await runRepeatedly(args);
       break;
+    case "batch-submit":
+      await callJobsApi("batch-submit", {
+        limit: numberArg(args, "limit", 100),
+        offset: numberArg(args, "offset", 0),
+        model: stringArg(args, "model"),
+      }, args);
+      break;
+    case "batch-status":
+      await callJobsApi("batch-status", {
+        batchId: requiredArg(args, "batch"),
+      }, args);
+      break;
+    case "batch-apply":
+      await callJobsApi("batch-apply", {
+        batchId: requiredArg(args, "batch"),
+        apply: !Boolean(args["dry-run"]),
+        acceptLowConfidence: Boolean(args["accept-low-confidence"]),
+      }, args);
+      break;
     case "collect-sources":
       await callJobsApi("collect-sources", {
         limit: numberArg(args, "limit", 10),
@@ -304,6 +323,26 @@ function parseCsvArg(value) {
     .filter(Boolean);
 }
 
+function stringArg(args, name) {
+  const value = args[name];
+
+  if (!value || value === true) {
+    return undefined;
+  }
+
+  return String(value);
+}
+
+function requiredArg(args, name) {
+  const value = args[name];
+
+  if (!value || value === true) {
+    throw new Error(`--${name} is required.`);
+  }
+
+  return String(value);
+}
+
 function requiredEnv(name) {
   const value = process.env[name];
 
@@ -362,6 +401,9 @@ function printHelp() {
   node scripts/series-summary-jobs.mjs import-source-urls --input data/source-urls.csv [--fetch]
   node scripts/series-summary-jobs.mjs collect-sources [--limit 10] [--offset 0] [--no-search] [--refetch]
   node scripts/series-summary-jobs.mjs run [--limit 1] [--repeat 1] [--interval-ms 60000] [--dry-run]
+  node scripts/series-summary-jobs.mjs batch-submit [--limit 100] [--offset 0] [--model MODEL]
+  node scripts/series-summary-jobs.mjs batch-status --batch batch_id
+  node scripts/series-summary-jobs.mjs batch-apply --batch batch_id [--dry-run] [--accept-low-confidence]
   node scripts/series-summary-jobs.mjs status
   node scripts/series-summary-jobs.mjs clear [--statuses pending,processing] [--all]
 

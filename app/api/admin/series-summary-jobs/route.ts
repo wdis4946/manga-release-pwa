@@ -9,6 +9,7 @@ const DEFAULT_MODEL = "gpt-5.5";
 const DEFAULT_WEB_SEARCH_TOOL_TYPE = "web_search_preview";
 const MAX_ENQUEUE_LIMIT = 5000;
 const MAX_WORKER_LIMIT = 10;
+const MAX_BATCH_SUBMIT_LIMIT = 5000;
 const MAX_SOURCE_COLLECT_LIMIT = 50;
 const MAX_SOURCES_PER_SERIES = 8;
 const MAX_CRAWLER_SEARCH_PAGES_PER_SERIES = 12;
@@ -53,6 +54,10 @@ type ClaimedJob = {
   series_id: string;
   attempts: number;
   max_attempts: number;
+};
+
+type BatchJob = ClaimedJob & {
+  status: string;
 };
 
 type SourceCollectionJob = {
@@ -120,6 +125,18 @@ export async function POST(request: Request) {
       return Response.json(await runSummaryJobs(request));
     }
 
+    if (mode === "batch-submit") {
+      return Response.json(await submitSummaryJobBatch(request));
+    }
+
+    if (mode === "batch-status") {
+      return Response.json(await getSummaryJobBatchStatus(request));
+    }
+
+    if (mode === "batch-apply") {
+      return Response.json(await applySummaryJobBatch(request));
+    }
+
     if (mode === "collect-sources") {
       return Response.json(await collectSummarySources(request));
     }
@@ -140,7 +157,7 @@ export async function POST(request: Request) {
       {
         ok: false,
         error:
-          "mode must be enqueue, run, collect-sources, import-source-urls, status, or clear.",
+          "mode must be enqueue, run, batch-submit, batch-status, batch-apply, collect-sources, import-source-urls, status, or clear.",
       },
       { status: 400 },
     );
@@ -456,12 +473,391 @@ async function runSummaryJobs(request: Request) {
   };
 }
 
+async function submitSummaryJobBatch(request: Request) {
+  const body = (await request.json().catch(() => ({}))) as {
+    limit?: number;
+    offset?: number;
+    model?: string;
+  };
+  const limit = clampPositiveInteger(body.limit ?? 100, MAX_BATCH_SUBMIT_LIMIT);
+  const offset = Math.max(0, Math.floor(body.offset ?? 0));
+  const model =
+    body.model?.trim() || process.env.OPENAI_SUMMARY_MODEL || DEFAULT_MODEL;
+  const supabase = createSupabaseAdminClient();
+  const jobs = await fetchBatchSubmitJobs({ supabase, limit, offset });
+
+  if (jobs.length === 0) {
+    return {
+      ok: true,
+      mode: "batch-submit",
+      model,
+      limit,
+      offset,
+      submittedCount: 0,
+      skippedCount: 0,
+      inputFileId: null,
+      batchId: null,
+      status: null,
+      results: [],
+    };
+  }
+
+  const seriesRows = await fetchSeriesRowsByIds(
+    supabase,
+    jobs.map((job) => job.series_id),
+  );
+  const seriesById = new Map(seriesRows.map((series) => [series.id, series]));
+  const context = await fetchSeriesContext(
+    supabase,
+    seriesRows.map((series) => series.id),
+  );
+  const sourcesBySeriesId = await fetchUsableSummarySources(
+    supabase,
+    seriesRows.map((series) => series.id),
+  );
+  const requests = [];
+  const submittedJobs: BatchJob[] = [];
+  const results = [];
+
+  for (const job of jobs) {
+    const series = seriesById.get(job.series_id);
+    const sources = sourcesBySeriesId.get(job.series_id) ?? [];
+
+    if (!series) {
+      await markJobFailed({
+        supabase,
+        job,
+        errorMessage: "Series was not found.",
+      });
+      results.push({
+        jobId: job.id,
+        seriesId: job.series_id,
+        status: "failed",
+        error: "Series was not found.",
+      });
+      continue;
+    }
+
+    if (sources.length === 0) {
+      await markJobNeedsReview({
+        supabase,
+        jobId: job.id,
+        summary: null,
+        errorMessage: "No usable stored source was found.",
+      });
+      results.push({
+        jobId: job.id,
+        seriesId: series.id,
+        title: series.display_title,
+        status: "needs_review",
+        reason: "No usable stored source was found.",
+      });
+      continue;
+    }
+
+    requests.push(
+      JSON.stringify({
+        custom_id: batchCustomId(job, series),
+        method: "POST",
+        url: "/v1/responses",
+        body: createStoredSourceSummaryRequestBody({
+          series,
+          context: context.get(series.id),
+          sources,
+          model,
+        }),
+      }),
+    );
+    submittedJobs.push(job);
+    results.push({
+      jobId: job.id,
+      seriesId: series.id,
+      title: series.display_title,
+      status: "submitted",
+      sourceCount: sources.length,
+    });
+  }
+
+  if (submittedJobs.length === 0) {
+    return {
+      ok: true,
+      mode: "batch-submit",
+      model,
+      limit,
+      offset,
+      submittedCount: 0,
+      skippedCount: jobs.length,
+      inputFileId: null,
+      batchId: null,
+      status: null,
+      results,
+    };
+  }
+
+  const inputFile = await uploadOpenAIJsonlFile({
+    content: `${requests.join("\n")}\n`,
+    filename: `series-summary-job-input-${formatTimestamp(new Date())}.jsonl`,
+  });
+  const batch = await openAIRequest("/batches", {
+    method: "POST",
+    json: {
+      input_file_id: inputFile.id,
+      endpoint: "/v1/responses",
+      completion_window: "24h",
+      metadata: {
+        job: "series-summary-stored-sources",
+        source: "series-summary-jobs",
+      },
+    },
+  });
+
+  await markJobsBatchSubmitted({
+    supabase,
+    jobs: submittedJobs,
+    batchId: batch.id,
+    inputFileId: inputFile.id,
+  });
+
+  return {
+    ok: true,
+    mode: "batch-submit",
+    model,
+    limit,
+    offset,
+    submittedCount: submittedJobs.length,
+    skippedCount: jobs.length - submittedJobs.length,
+    inputFileId: inputFile.id,
+    batchId: batch.id,
+    status: batch.status,
+    results,
+  };
+}
+
+async function getSummaryJobBatchStatus(request: Request) {
+  const body = (await request.json().catch(() => ({}))) as {
+    batchId?: string;
+  };
+  const batchId = body.batchId?.trim();
+
+  if (!batchId) {
+    throw new Error("batchId is required.");
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const [batch, jobCounts] = await Promise.all([
+    openAIRequest(`/batches/${encodeURIComponent(batchId)}`),
+    countJobsForBatch(supabase, batchId),
+  ]);
+
+  return {
+    ok: true,
+    mode: "batch-status",
+    batch,
+    jobCounts,
+  };
+}
+
+async function applySummaryJobBatch(request: Request) {
+  const body = (await request.json().catch(() => ({}))) as {
+    batchId?: string;
+    apply?: boolean;
+    acceptLowConfidence?: boolean;
+  };
+  const batchId = body.batchId?.trim();
+
+  if (!batchId) {
+    throw new Error("batchId is required.");
+  }
+
+  const batch = await openAIRequest(`/batches/${encodeURIComponent(batchId)}`);
+
+  if (batch.status !== "completed") {
+    return {
+      ok: true,
+      mode: "batch-apply",
+      applied: false,
+      batchId,
+      status: batch.status,
+      message: "Batch is not completed.",
+    };
+  }
+
+  if (!batch.output_file_id) {
+    throw new Error("Batch output_file_id is missing.");
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const jobsById = await fetchBatchJobsByOpenAIBatchId(supabase, batchId);
+  const output = await downloadOpenAIFile(batch.output_file_id);
+  const rows = output
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line, index) => parseBatchOutputLine(line, index + 1));
+  const apply = body.apply !== false;
+  const results = [];
+  let completedCount = 0;
+  let needsReviewCount = 0;
+  let failedCount = 0;
+  let updatedCount = 0;
+
+  for (const row of rows) {
+    const { jobId } = parseBatchCustomId(row.customId);
+    const job = jobId ? jobsById.get(jobId) : undefined;
+
+    if (!job) {
+      failedCount += 1;
+      results.push({
+        customId: row.customId,
+        status: "failed",
+        error: "Matching job was not found.",
+      });
+      continue;
+    }
+
+    if (row.error) {
+      const retryable = job.attempts < job.max_attempts;
+
+      await markJobFailed({
+        supabase,
+        job,
+        errorMessage: row.error,
+        retryable,
+      });
+      failedCount += 1;
+      results.push({
+        jobId: job.id,
+        seriesId: job.series_id,
+        status: retryable ? "pending" : "failed",
+        error: row.error,
+      });
+      continue;
+    }
+
+    const validationError = validateSummary(
+      row.summary,
+      body.acceptLowConfidence === true,
+    );
+
+    if (validationError) {
+      await markJobNeedsReview({
+        supabase,
+        jobId: job.id,
+        summary: row.summary,
+        errorMessage: validationError,
+      });
+      needsReviewCount += 1;
+      results.push({
+        jobId: job.id,
+        seriesId: job.series_id,
+        title: row.summary?.title ?? "",
+        status: "needs_review",
+        reason: validationError,
+      });
+      continue;
+    }
+
+    if (!row.summary) {
+      await markJobNeedsReview({
+        supabase,
+        jobId: job.id,
+        summary: null,
+        errorMessage: "summary is missing",
+      });
+      needsReviewCount += 1;
+      results.push({
+        jobId: job.id,
+        seriesId: job.series_id,
+        status: "needs_review",
+        reason: "summary is missing",
+      });
+      continue;
+    }
+
+    if (row.summary.id !== job.series_id) {
+      await markJobNeedsReview({
+        supabase,
+        jobId: job.id,
+        summary: row.summary,
+        errorMessage: "summary id does not match the job series_id",
+      });
+      needsReviewCount += 1;
+      results.push({
+        jobId: job.id,
+        seriesId: job.series_id,
+        title: row.summary.title,
+        status: "needs_review",
+        reason: "summary id does not match the job series_id",
+      });
+      continue;
+    }
+
+    if (apply) {
+      const { error: updateError } = await supabase
+        .from("series")
+        .update({
+          description: row.summary.summary,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", job.series_id);
+
+      if (updateError) {
+        await markJobFailed({
+          supabase,
+          job,
+          errorMessage: updateError.message,
+        });
+        failedCount += 1;
+        results.push({
+          jobId: job.id,
+          seriesId: job.series_id,
+          title: row.summary.title,
+          status: "failed",
+          error: updateError.message,
+        });
+        continue;
+      }
+
+      updatedCount += 1;
+    }
+
+    await markJobCompleted({
+      supabase,
+      jobId: job.id,
+      summary: row.summary,
+    });
+    completedCount += 1;
+    results.push({
+      jobId: job.id,
+      seriesId: job.series_id,
+      title: row.summary.title,
+      status: "completed",
+      applied: apply,
+    });
+  }
+
+  return {
+    ok: true,
+    mode: "batch-apply",
+    batchId,
+    status: batch.status,
+    apply,
+    total: rows.length,
+    completedCount,
+    needsReviewCount,
+    failedCount,
+    updatedCount,
+    results,
+  };
+}
+
 async function getSummaryJobStatus() {
   const supabase = createSupabaseAdminClient();
   const statuses = [
     "pending",
     "sources_collected",
     "source_collection_failed",
+    "batch_submitted",
     "processing",
     "completed",
     "needs_review",
@@ -765,6 +1161,132 @@ async function fetchPendingSourceCollectionJobs({
   return (data ?? []) as SourceCollectionJob[];
 }
 
+async function fetchBatchSubmitJobs({
+  supabase,
+  limit,
+  offset,
+}: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>;
+  limit: number;
+  offset: number;
+}) {
+  const { data, error } = await supabase
+    .from("series_summary_jobs")
+    .select("id, series_id, status, attempts, max_attempts")
+    .eq("status", "sources_collected")
+    .order("created_at", { ascending: true })
+    .order("id", { ascending: true })
+    .range(offset, offset + limit - 1);
+
+  if (error) {
+    throw error;
+  }
+
+  return ((data ?? []) as BatchJob[]).filter(
+    (job) => job.attempts < job.max_attempts,
+  );
+}
+
+async function markJobsBatchSubmitted({
+  supabase,
+  jobs,
+  batchId,
+  inputFileId,
+}: {
+  supabase: ReturnType<typeof createSupabaseAdminClient>;
+  jobs: BatchJob[];
+  batchId: string;
+  inputFileId: string;
+}) {
+  if (jobs.length === 0) {
+    return;
+  }
+
+  const now = new Date().toISOString();
+  const { error } = await supabase
+    .from("series_summary_jobs")
+    .upsert(
+      jobs.map((job) => ({
+        id: job.id,
+        series_id: job.series_id,
+        status: "batch_submitted",
+        attempts: job.attempts + 1,
+        max_attempts: job.max_attempts,
+        locked_at: null,
+        started_at: now,
+        updated_at: now,
+        error_message: null,
+        openai_batch_id: batchId,
+        openai_input_file_id: inputFileId,
+        batch_submitted_at: now,
+      })),
+      { onConflict: "id" },
+    );
+
+  if (error) {
+    throw error;
+  }
+}
+
+async function countJobsForBatch(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  batchId: string,
+) {
+  const statuses = [
+    "batch_submitted",
+    "completed",
+    "needs_review",
+    "failed",
+    "pending",
+  ];
+  const counts: Record<string, number> = {};
+
+  for (const status of statuses) {
+    const { count, error } = await supabase
+      .from("series_summary_jobs")
+      .select("id", { count: "exact", head: true })
+      .eq("openai_batch_id", batchId)
+      .eq("status", status);
+
+    if (error) {
+      throw error;
+    }
+
+    counts[status] = count ?? 0;
+  }
+
+  return counts;
+}
+
+async function fetchBatchJobsByOpenAIBatchId(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  batchId: string,
+) {
+  const jobs = new Map<string, BatchJob>();
+
+  for (let offset = 0; ; offset += 1000) {
+    const { data, error } = await supabase
+      .from("series_summary_jobs")
+      .select("id, series_id, status, attempts, max_attempts")
+      .eq("openai_batch_id", batchId)
+      .range(offset, offset + 999);
+
+    if (error) {
+      throw error;
+    }
+
+    for (const job of (data ?? []) as BatchJob[]) {
+      jobs.set(job.id, job);
+    }
+
+    if (!data || data.length < 1000) {
+      break;
+    }
+  }
+
+  return jobs;
+}
+
 async function markSourceCollectionJob({
   supabase,
   jobId,
@@ -814,6 +1336,7 @@ async function clearSummaryJobs(request: Request) {
     "pending",
     "sources_collected",
     "source_collection_failed",
+    "batch_submitted",
     "processing",
     "completed",
     "needs_review",
@@ -2638,8 +3161,63 @@ async function createSeriesSummary({
     } satisfies SummaryResult;
   }
 
+  const body = createStoredSourceSummaryRequestBody({
+    series,
+    context,
+    sources,
+    model,
+    retryForTooShort,
+  });
+  let response;
+
+  try {
+    response = await openAIRequest("/responses", {
+      method: "POST",
+      json: body,
+    });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error);
+
+    if (model !== DEFAULT_MODEL && shouldFallbackToDefaultModel(message)) {
+      return createSeriesSummary({
+        series,
+        context,
+        sources,
+        model: DEFAULT_MODEL,
+        webSearchToolType,
+        allowWebSearch,
+        retryForTooShort,
+      });
+    }
+
+    throw error;
+  }
+
+  const outputText = extractOutputText(response);
+
+  if (!outputText) {
+    throw new Error("No output text found.");
+  }
+
+  return normalizeSummaryResult(JSON.parse(outputText) as SummaryResult);
+}
+
+function createStoredSourceSummaryRequestBody({
+  series,
+  context,
+  sources,
+  model,
+  retryForTooShort = false,
+}: {
+  series: SeriesRow;
+  context: SeriesContext | undefined;
+  sources: SeriesSummarySource[];
+  model: string;
+  retryForTooShort?: boolean;
+}) {
   const sourceContext = formatSourceContext(sources);
-  const body = {
+
+  return {
     model,
     input: [
       {
@@ -2654,6 +3232,7 @@ async function createSeriesSummary({
           "漫画の作品名は必ず『』で囲んでください。",
           "冒頭のあらすじ要約は1行だけで書き、その直後に改行して次の段落へ進んでください。",
           "作品名、作者、ジャンル感、主人公、舞台、導入、見どころを自然に含めてください。",
+          "作品のメタ情報（作者や掲載雑誌など）を記載する場合は、物語の内容と段落を分けてください。",
           "結末や重大なネタバレは避けてください。",
           "参考情報にない設定や固有名詞を勝手に追加しないでください。",
           "参考情報をそのままコピーせず、必ず言い換えて再構成してください。",
@@ -2707,38 +3286,6 @@ async function createSeriesSummary({
       },
     },
   };
-  let response;
-
-  try {
-    response = await openAIRequest("/responses", {
-      method: "POST",
-      json: body,
-    });
-  } catch (error: unknown) {
-    const message = error instanceof Error ? error.message : String(error);
-
-    if (model !== DEFAULT_MODEL && shouldFallbackToDefaultModel(message)) {
-      return createSeriesSummary({
-        series,
-        context,
-        sources,
-        model: DEFAULT_MODEL,
-        webSearchToolType,
-        allowWebSearch,
-        retryForTooShort,
-      });
-    }
-
-    throw error;
-  }
-
-  const outputText = extractOutputText(response);
-
-  if (!outputText) {
-    throw new Error("No output text found.");
-  }
-
-  return normalizeSummaryResult(JSON.parse(outputText) as SummaryResult);
 }
 
 async function createSeriesSummaryWithWebSearch({
@@ -2774,6 +3321,7 @@ async function createSeriesSummaryWithWebSearch({
           "漫画の作品名は必ず『』で囲んでください。",
           "冒頭のあらすじ要約は1行だけで書き、その直後に改行して次の段落へ進んでください。",
           "作品名、作者、ジャンル感、主人公、舞台、導入、見どころを自然に含めてください。",
+          "作品のメタ情報（作者や掲載雑誌など）を記載する場合は、物語の内容と段落を分けてください。",
           "結末や重大なネタバレは避けてください。",
           "参考情報にない設定や固有名詞を勝手に追加しないでください。",
           "参考情報をそのままコピーせず、必ず言い換えて再構成してください。",
@@ -2969,6 +3517,60 @@ async function markJobFailed({
   }
 }
 
+function batchCustomId(job: BatchJob, series: SeriesRow) {
+  return `job:${job.id}:series:${series.id}`;
+}
+
+function parseBatchCustomId(customId: string) {
+  const match = /^job:([^:]+):series:([^:]+)$/.exec(customId);
+
+  return {
+    jobId: match?.[1] ?? null,
+    seriesId: match?.[2] ?? null,
+  };
+}
+
+async function uploadOpenAIJsonlFile({
+  content,
+  filename,
+}: {
+  content: string;
+  filename: string;
+}) {
+  const form = new FormData();
+  form.append(
+    "file",
+    new Blob([content], { type: "application/jsonl" }),
+    filename,
+  );
+  form.append("purpose", "batch");
+
+  const response = await fetch(`${OPENAI_API_BASE}/files`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${requiredOpenAIKey()}` },
+    body: form,
+  });
+
+  if (!response.ok) {
+    throw new Error(await formatOpenAIError(response));
+  }
+
+  return response.json();
+}
+
+async function downloadOpenAIFile(fileId: string) {
+  const response = await fetch(
+    `${OPENAI_API_BASE}/files/${encodeURIComponent(fileId)}/content`,
+    { headers: { Authorization: `Bearer ${requiredOpenAIKey()}` } },
+  );
+
+  if (!response.ok) {
+    throw new Error(await formatOpenAIError(response));
+  }
+
+  return response.text();
+}
+
 async function openAIRequest(
   path: string,
   options: { method?: string; json?: unknown } = {},
@@ -2987,6 +3589,79 @@ async function openAIRequest(
   }
 
   return response.json();
+}
+
+function parseBatchOutputLine(line: string, lineNumber: number) {
+  let parsed: {
+    custom_id?: string;
+    error?: { message?: string };
+    response?: {
+      status_code?: number;
+      body?: {
+        error?: { message?: string };
+        output_text?: string;
+        output?: Array<{ content?: Array<{ text?: string }> }>;
+      };
+    };
+  };
+
+  try {
+    parsed = JSON.parse(line);
+  } catch (error) {
+    return {
+      customId: "",
+      error: `Line ${lineNumber}: invalid JSON: ${
+        error instanceof Error ? error.message : "unknown"
+      }`,
+      summary: null,
+    };
+  }
+
+  const customId = parsed.custom_id ?? "";
+
+  if (parsed.error) {
+    return {
+      customId,
+      error: parsed.error.message ?? JSON.stringify(parsed.error),
+      summary: null,
+    };
+  }
+
+  const statusCode = parsed.response?.status_code;
+
+  if (statusCode && (statusCode < 200 || statusCode >= 300)) {
+    return {
+      customId,
+      error:
+        parsed.response?.body?.error?.message ??
+        `OpenAI response status ${statusCode}`,
+      summary: null,
+    };
+  }
+
+  const outputText = extractOutputText(parsed.response?.body);
+
+  if (!outputText) {
+    return { customId, error: "No output text found.", summary: null };
+  }
+
+  try {
+    return {
+      customId,
+      error: null,
+      summary: normalizeSummaryResult(
+        JSON.parse(outputText) as SummaryResult,
+      ),
+    };
+  } catch (error) {
+    return {
+      customId,
+      error: `Invalid summary JSON: ${
+        error instanceof Error ? error.message : "unknown"
+      }`,
+      summary: null,
+    };
+  }
 }
 
 async function formatOpenAIError(response: Response) {
@@ -3109,4 +3784,18 @@ function firstRelation<T>(value: T | T[] | null) {
 
 function formatList(values: string[] = []) {
   return values.length ? values.join(", ") : "不明";
+}
+
+function formatTimestamp(date: Date) {
+  const pad = (value: number, length = 2) =>
+    value.toString().padStart(length, "0");
+
+  return [
+    date.getFullYear(),
+    pad(date.getMonth() + 1),
+    pad(date.getDate()),
+    pad(date.getHours()),
+    pad(date.getMinutes()),
+    pad(date.getSeconds()),
+  ].join("");
 }
