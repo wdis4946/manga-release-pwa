@@ -8,7 +8,7 @@ type MangaCardProps = {
 
 export function MangaCard({ manga }: MangaCardProps) {
   return (
-    <article className="overflow-hidden rounded-md bg-stone-100 transition duration-200 hover:brightness-95">
+    <article className="overflow-hidden rounded-lg bg-stone-100 transition duration-200 hover:brightness-95">
       <Link
         href={`/manga/${manga.id}`}
         aria-label={`${manga.title}の詳細を見る`}
