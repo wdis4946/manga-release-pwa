@@ -66,8 +66,7 @@ export function InfiniteMangaGrid({
         return merged;
       });
 
-      const nextHasMore = nextManga.length >= pageSize;
-      hasMoreRef.current = nextHasMore;
+      hasMoreRef.current = nextManga.length >= pageSize;
     } catch (error) {
       console.error("[Public manga] Failed to load more manga.", error);
       hasMoreRef.current = false;
