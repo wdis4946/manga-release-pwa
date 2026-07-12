@@ -168,7 +168,7 @@ async function runSeriesCoverJobs(request: Request) {
     supabase,
     seriesRows.map((series) => series.id),
   );
-  const isbnsBySeriesId = await fetchFirstSeriesIsbns(
+  const isbnsBySeriesId = await fetchSeriesIsbns(
     supabase,
     seriesRows.map((series) => series.id),
   );
@@ -633,7 +633,7 @@ async function fetchSeriesContext(
   return context;
 }
 
-async function fetchFirstSeriesIsbns(
+async function fetchSeriesIsbns(
   supabase: ReturnType<typeof createSupabaseAdminClient>,
   seriesIds: string[],
 ) {
@@ -647,15 +647,16 @@ async function fetchFirstSeriesIsbns(
     .from("series_items")
     .select("series_id, isbn, category_number, display_order")
     .in("series_id", seriesIds)
-    .order("category_number", { ascending: true })
-    .order("display_order", { ascending: true })
     .order("isbn", { ascending: true });
 
   if (error) throw error;
 
   for (const row of data ?? []) {
     const isbns = result.get(row.series_id);
-    if (isbns && isbns.length < 3) isbns.push(row.isbn);
+    const normalized = normalizeIsbn(row.isbn);
+    if (isbns && normalized && normalized.startsWith("9")) {
+      isbns.push(row.isbn);
+    }
   }
 
   return result;
@@ -701,6 +702,7 @@ async function collectOfficialPageUrls({
 }) {
   const searchedUrls = await crawlPublisherSearchUrls(series, context, isbns);
   return uniqueStrings([
+    ...directOfficialPageUrls(context, isbns),
     ...existingSources.map((source) => source.url),
     ...searchedUrls,
   ])
@@ -743,8 +745,9 @@ async function crawlPublisherSearchUrls(
 
 function publisherSearchPages(query: string, candidates: Set<string>) {
   const encoded = encodeURIComponent(query);
+  const doubleEncoded = encodeURIComponent(encoded);
   const pages = [
-    { id: "kodansha", url: `https://www.kodansha.co.jp/search?keyword=${encoded}`, allowedDomains: ["kodansha.co.jp"] },
+    { id: "kodansha", url: `https://www.kodansha.co.jp/products/search?keywords=${doubleEncoded}&scope=n&filter%5Bcategory%5D=comic&sort=old&page=1`, allowedDomains: ["kodansha.co.jp"] },
     { id: "kadokawa", url: `https://www.kadokawa.co.jp/search?kw=${encoded}`, allowedDomains: ["kadokawa.co.jp", "store.kadokawa.co.jp"] },
     { id: "kadokawa", url: `https://store.kadokawa.co.jp/shop/goods/search.aspx?keyword=${encoded}`, allowedDomains: ["kadokawa.co.jp", "store.kadokawa.co.jp"] },
     { id: "akita", url: `https://www.akitashoten.co.jp/search?q=${encoded}`, allowedDomains: ["akitashoten.co.jp"] },
@@ -755,6 +758,26 @@ function publisherSearchPages(query: string, candidates: Set<string>) {
   ];
 
   return pages.filter((page) => candidates.size === 0 || candidates.has(page.id));
+}
+
+function directOfficialPageUrls(
+  context: SeriesContext | undefined,
+  isbns: string[],
+) {
+  const candidates = inferPublisherCandidates(context, isbns);
+  const urls: string[] = [];
+
+  if (candidates.has("shueisha")) {
+    const shueishaIsbn = lowestNormalizedIsbnWithPrefix(isbns, "978408");
+
+    if (shueishaIsbn) {
+      urls.push(
+        `https://www.shueisha.co.jp/books/items/contents.html?isbn=${formatShueishaIsbnQuery(shueishaIsbn)}`,
+      );
+    }
+  }
+
+  return urls;
 }
 
 async function findCoverImageFromOfficialPages({
@@ -1127,6 +1150,20 @@ function normalizeComparableText(value: string) {
 function normalizeIsbn(value: string) {
   const normalized = value.replace(/[^0-9Xx]/g, "").toUpperCase();
   return normalized.length >= 10 ? normalized : null;
+}
+
+function lowestNormalizedIsbnWithPrefix(isbns: string[], prefix: string) {
+  return uniqueStrings(isbns.map(normalizeIsbn))
+    .filter((isbn) => isbn.startsWith(prefix))
+    .sort()[0] ?? null;
+}
+
+function formatShueishaIsbnQuery(isbn: string) {
+  if (/^978408\d{7}$/.test(isbn)) {
+    return `978-4-08-${isbn.slice(6, 12)}-${isbn.slice(12)}`;
+  }
+
+  return isbn;
 }
 
 function domainFromUrl(url: string) {
