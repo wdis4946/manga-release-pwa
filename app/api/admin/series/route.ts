@@ -43,12 +43,49 @@ export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const page = Math.max(1, Number(searchParams.get("page")) || 1);
   const queryText = searchParams.get("q")?.trim();
+  const isbnText = searchParams.get("isbn")?.trim();
   const imprintText = searchParams.get("imprint")?.trim();
   const publisherText = searchParams.get("publisher")?.trim();
   const agentText = searchParams.get("agent")?.trim();
   const from = (page - 1) * PAGE_SIZE;
   const supabase = createSupabaseAdminClient();
   const hasRelationFilter = Boolean(imprintText || publisherText || agentText);
+
+  if (isbnText) {
+    try {
+      const seriesIds = await resolveSeriesIdsByIsbn(supabase, isbnText);
+
+      if (seriesIds.length === 0) {
+        return Response.json({
+          series: [],
+          page,
+          pageSize: PAGE_SIZE,
+          total: 0,
+        });
+      }
+
+      const rows = await fetchSeriesRowsByIds({ supabase, seriesIds });
+      const itemCounts = await countItemsBySeriesId(supabase, rows);
+      const responseSeries = await Promise.all(
+        rows.map((row) =>
+          toSeriesResponse(row, itemCounts.get(row.id) ?? 0, supabase),
+        ),
+      );
+
+      return Response.json({
+        series: responseSeries,
+        page,
+        pageSize: PAGE_SIZE,
+        total: responseSeries.length,
+      });
+    } catch (error) {
+      console.error("[Admin series] Failed to search series by ISBN.", error);
+      return Response.json(
+        { error: "Failed to search series by ISBN." },
+        { status: 500 },
+      );
+    }
+  }
 
   if (hasRelationFilter) {
     try {
@@ -264,6 +301,32 @@ async function fetchSeriesIdsFromLinks({
   }
 
   return Array.from(seriesIds);
+}
+
+async function resolveSeriesIdsByIsbn(
+  supabase: ReturnType<typeof createSupabaseAdminClient>,
+  isbnText: string,
+) {
+  const normalizedIsbn = isbnText.replace(/\D/g, "");
+  const isbnCandidates = [
+    ...new Set([isbnText.trim(), normalizedIsbn].filter(Boolean)),
+  ];
+  const { data, error } = await supabase
+    .from("series_items")
+    .select("series_id")
+    .in("isbn", isbnCandidates);
+
+  if (error) {
+    throw error;
+  }
+
+  return [
+    ...new Set(
+      (data ?? [])
+        .map((row) => row.series_id as string | null)
+        .filter((seriesId): seriesId is string => Boolean(seriesId)),
+    ),
+  ];
 }
 
 async function fetchSeriesRowsByIds({

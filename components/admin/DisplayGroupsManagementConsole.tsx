@@ -332,10 +332,17 @@ export function DisplayGroupsManagementConsole() {
 
     setIsSearching(true);
     setError("");
+    const normalizedIsbn = seriesQuery.replace(/\D/g, "");
     const params = new URLSearchParams({
-      q: seriesQuery.trim(),
       page: "1",
     });
+
+    if (normalizedIsbn.length === 10 || normalizedIsbn.length === 13) {
+      params.set("isbn", normalizedIsbn);
+    } else {
+      params.set("q", seriesQuery.trim());
+    }
+
     const response = await authorizedFetch(`/api/admin/series?${params}`);
 
     if (response.status === 401) {
@@ -585,7 +592,7 @@ export function DisplayGroupsManagementConsole() {
                     <input
                       value={seriesQuery}
                       onChange={(event) => setSeriesQuery(event.target.value)}
-                      placeholder="シリーズ名で検索"
+                      placeholder="ISBNまたはシリーズ名で検索"
                       className="h-9 w-full rounded-md border border-stone-300 pl-9 pr-3 text-sm outline-none focus:border-cyan-700"
                     />
                   </div>

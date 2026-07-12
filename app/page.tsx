@@ -23,7 +23,7 @@ export default async function Home({ searchParams }: HomeProps) {
 
   if (displayGroups.length > 0) {
     return (
-      <main className="min-h-screen px-2 py-3 sm:px-4">
+      <main className="font-yomogi min-h-screen px-2 py-3 sm:px-4">
         <GroupedMangaGallery groups={displayGroups} />
       </main>
     );
@@ -37,7 +37,7 @@ export default async function Home({ searchParams }: HomeProps) {
   });
 
   return (
-    <main className="min-h-screen px-2 py-3 sm:px-4">
+    <main className="font-yomogi min-h-screen px-2 py-3 sm:px-4">
       <InfiniteMangaGrid
         key={`${params.q ?? ""}:${params.tag ?? ""}:${params.author ?? ""}`}
         initialManga={manga}

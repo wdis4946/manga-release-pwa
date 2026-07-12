@@ -42,7 +42,7 @@ export function AutoHideHeader({ tags, authors }: AutoHideHeaderProps) {
 
   return (
     <header
-      className={`sticky top-0 z-20 border-b border-stone-200 bg-white/95 px-3 py-3 backdrop-blur transition-transform duration-300 sm:px-5 ${
+      className={`font-yomogi sticky top-0 z-20 border-b border-stone-200 bg-white/95 px-3 py-3 backdrop-blur transition-transform duration-300 sm:px-5 ${
         isHidden ? "-translate-y-full" : "translate-y-0"
       }`}
     >

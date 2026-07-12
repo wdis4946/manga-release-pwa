@@ -1,3 +1,4 @@
+@import url("https://fonts.googleapis.com/css2?family=Yomogi&display=swap");
 @import "tailwindcss";
 
 :root {
@@ -21,4 +22,8 @@ body {
 a,
 button {
   -webkit-tap-highlight-color: transparent;
+}
+
+.font-yomogi {
+  font-family: "Yomogi", var(--font-geist-sans), Arial, Helvetica, sans-serif;
 }
