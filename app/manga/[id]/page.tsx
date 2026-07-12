@@ -43,6 +43,7 @@ export default async function MangaDetailPage({ params }: MangaDetailPageProps) 
               width={420}
               height={640}
               priority
+              unoptimized
               className="h-auto w-full object-cover"
             />
           </div>
@@ -78,7 +79,7 @@ export default async function MangaDetailPage({ params }: MangaDetailPageProps) 
                 ))}
               </div>
             ) : null}
-            <p className="mt-5 text-sm leading-7 text-stone-700">
+            <p className="mt-5 whitespace-pre-line text-sm leading-7 text-stone-700">
               {manga.description}
             </p>
           </div>

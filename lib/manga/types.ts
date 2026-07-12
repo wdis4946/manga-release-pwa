@@ -12,7 +12,7 @@ export type Manga = {
   amazonUrl?: string;
   rakutenUrl?: string;
   rentalUrl?: string;
-  source?: "mock" | "rakuten";
+  source?: "mock" | "rakuten" | "series";
   rawApiData?: Record<string, unknown>;
 };
 

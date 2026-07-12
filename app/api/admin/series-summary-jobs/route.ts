@@ -986,6 +986,53 @@ async function collectSummarySources(request: Request) {
       supabase,
       series.id,
     );
+    const existingUsableWikiSources = existingSources.filter(
+      (source) =>
+        source.status === "fetched" &&
+        source.extracted_text &&
+        source.source_type === "reference_database" &&
+        ["wikipedia.org", "ja.wikipedia.org"].includes(source.domain),
+    );
+
+    if (existingUsableWikiSources.length > 0 && body.refetch !== true) {
+      const collectedSourceUrls = existingUsableWikiSources.map(
+        (source) => source.url,
+      );
+
+      if (sourceJob) {
+        await markSourceCollectionJob({
+          supabase,
+          jobId: sourceJob.id,
+          status: "sources_collected",
+          sourceUrls: collectedSourceUrls,
+          errorMessage: null,
+        });
+      }
+
+      results.push({
+        jobId: sourceJob?.id,
+        seriesId: series.id,
+        title: series.display_title,
+        isbns,
+        publisherCandidates,
+        collectionStatus: "sources_collected",
+        isbnDirectUrls: [],
+        searchResultUrls: [],
+        discoveredUrls: [],
+        existingSourceCount: existingSources.length,
+        discoveredSourceCount: 0,
+        processedSourceCount: existingUsableWikiSources.length,
+        sources: existingUsableWikiSources.map((source) => ({
+          url: source.url,
+          status: "skipped",
+          sourceType: source.source_type,
+          score: source.score,
+          errorMessage: null,
+        })),
+      });
+      continue;
+    }
+
     const discoveredSourceDetails = await discoverSourceUrls({
       series,
       context: seriesContext,
@@ -1687,7 +1734,7 @@ async function fetchSeriesIsbns(
       .from("series_items")
       .select("series_id, isbn, display_order")
       .in("series_id", chunk)
-      .order("display_order", { ascending: true });
+      .order("isbn", { ascending: true });
 
     if (error) {
       throw error;
@@ -1925,7 +1972,6 @@ function buildDirectCrawlerSourceUrls(
           ? isbn10ToIsbn13(normalized)
           : null;
     const isbn10 = normalized ? isbn13ToIsbn10(normalized) : null;
-    const hyphenated = isbn13 ? hyphenateJapaneseIsbn13(isbn13) : null;
 
     if (isbn13 && candidates.has("square_enix")) {
       urls.push(
@@ -1941,11 +1987,14 @@ function buildDirectCrawlerSourceUrls(
       urls.push(`https://shogakukan-comic.jp/book?isbn=${isbn13}`);
     }
 
-    if (hyphenated && candidates.has("shueisha")) {
-      urls.push(
-        `https://www.shueisha.co.jp/books/items/contents.html?isbn=${encodeURIComponent(hyphenated)}&mode=1`,
-        `https://books.shueisha.co.jp/items/contents.html?isbn=${encodeURIComponent(hyphenated)}`,
-        `https://www.s-manga.net/items/contents.html?isbn=${encodeURIComponent(hyphenated)}`,
+  }
+
+  if (candidates.has("shueisha")) {
+    const shueishaIsbn = lowestNormalizedIsbnWithPrefix(isbns, "978408");
+
+    if (shueishaIsbn) {
+      urls.unshift(
+        `https://www.shueisha.co.jp/books/items/contents.html?isbn=${formatShueishaIsbnQuery(shueishaIsbn)}`,
       );
     }
   }
@@ -2076,16 +2125,12 @@ function publisherSearchPages(
   isbns: string[],
 ) {
   const encoded = encodeURIComponent(query);
+  const doubleEncoded = encodeURIComponent(encoded);
   const candidates = inferPublisherCandidates(context, isbns);
   const pages = [
     {
       id: "kodansha",
-      url: `https://www.kodansha.co.jp/search?keyword=${encoded}`,
-      allowedDomains: ["kodansha.co.jp", "shonenmagazine.com"],
-    },
-    {
-      id: "kodansha",
-      url: `https://www.kodansha.co.jp/search?q=${encoded}`,
+      url: `https://www.kodansha.co.jp/products/search?keywords=${doubleEncoded}&scope=n&filter%5Bcategory%5D=comic&sort=old&page=1`,
       allowedDomains: ["kodansha.co.jp", "shonenmagazine.com"],
     },
     {
@@ -3021,6 +3066,22 @@ function normalizeIsbn(value: string | null | undefined) {
   }
 
   return null;
+}
+
+function lowestNormalizedIsbnWithPrefix(isbns: string[], prefix: string) {
+  return (
+    uniqueStrings(isbns.map(normalizeIsbn))
+      .filter((isbn) => isbn.startsWith(prefix))
+      .sort()[0] ?? null
+  );
+}
+
+function formatShueishaIsbnQuery(isbn: string) {
+  if (/^978408\d{7}$/.test(isbn)) {
+    return `978-4-08-${isbn.slice(6, 12)}-${isbn.slice(12)}`;
+  }
+
+  return isbn;
 }
 
 function normalizeComparableText(value: string | null | undefined) {

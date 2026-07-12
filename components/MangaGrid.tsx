@@ -8,14 +8,14 @@ type MangaGridProps = {
 export function MangaGrid({ manga }: MangaGridProps) {
   if (manga.length === 0) {
     return (
-      <div className="rounded-md border border-dashed border-stone-300 bg-white p-8 text-center text-sm text-stone-500">
-        条件に一致する漫画がありません。
+      <div className="px-4 py-12 text-center text-sm font-medium text-stone-500">
+        表示できる漫画がありません。
       </div>
     );
   }
 
   return (
-    <div className="columns-2 gap-4 sm:columns-3 lg:columns-5 2xl:columns-6">
+    <div className="columns-2 gap-3 sm:columns-3 sm:gap-4 lg:columns-5 2xl:columns-7">
       {manga.map((item) => (
         <MangaCard key={item.id} manga={item} />
       ))}
