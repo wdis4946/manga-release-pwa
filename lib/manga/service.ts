@@ -9,13 +9,16 @@ import { getFilteredManga, getMangaById } from "./filters";
 import { mangaList } from "./mock-data";
 import type { Manga, MangaFilters, MangaSort } from "./types";
 
-const PUBLIC_GALLERY_LIMIT = 120;
+export const PUBLIC_GALLERY_PAGE_SIZE = 25;
+const MAX_PUBLIC_GALLERY_LIMIT = 50;
 const SUGGESTION_LIMIT = 40;
 
 type PublicGalleryFilters = {
   query?: string;
   tag?: string;
   author?: string;
+  limit?: number;
+  excludeIds?: string[];
 };
 
 type SearchSuggestion = {
@@ -95,6 +98,8 @@ export async function getPublicMangaSeriesGallery(
 ): Promise<{ manga: Manga[]; source: "series" }> {
   const supabase = createSupabaseAdminClient();
   const matchingSeriesIds = await resolvePublicGallerySeriesIds(filters);
+  const limit = clampPublicGalleryLimit(filters.limit);
+  const excludedIds = normalizeUuidList(filters.excludeIds ?? []);
 
   if (matchingSeriesIds && matchingSeriesIds.length === 0) {
     return { manga: [], source: "series" };
@@ -107,7 +112,7 @@ export async function getPublicMangaSeriesGallery(
     )
     .not("representative_image_path", "is", null)
     .neq("representative_image_path", "")
-    .limit(PUBLIC_GALLERY_LIMIT * 3);
+    .limit(Math.min(Math.max(limit * 6, 200), 500));
 
   const queryText = filters.query?.trim();
 
@@ -126,10 +131,10 @@ export async function getPublicMangaSeriesGallery(
     return { manga: [], source: "series" };
   }
 
-  const rows = shuffle((data ?? []) as SeriesRow[]).slice(
-    0,
-    PUBLIC_GALLERY_LIMIT,
-  );
+  const excludedIdSet = new Set(excludedIds);
+  const rows = shuffle((data ?? []) as SeriesRow[])
+    .filter((row) => !excludedIdSet.has(row.id))
+    .slice(0, limit);
   const manga = rows.flatMap((row) => {
     const coverImageUrl = createPublicSeriesCoverUrl(
       supabase,
@@ -477,4 +482,27 @@ function escapeIlikeValue(value: string) {
 
 function firstRelation<T>(value: T | T[] | null | undefined) {
   return Array.isArray(value) ? value[0] : value;
+}
+
+function clampPublicGalleryLimit(limit: number | undefined) {
+  if (!Number.isFinite(limit)) {
+    return PUBLIC_GALLERY_PAGE_SIZE;
+  }
+
+  return Math.min(
+    Math.max(Math.trunc(limit ?? PUBLIC_GALLERY_PAGE_SIZE), 1),
+    MAX_PUBLIC_GALLERY_LIMIT,
+  );
+}
+
+function normalizeUuidList(values: string[]) {
+  return [
+    ...new Set(
+      values.filter((value) =>
+        /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+          value,
+        ),
+      ),
+    ),
+  ];
 }

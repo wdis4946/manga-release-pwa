@@ -1,14 +1,10 @@
 import { getPublicSearchSuggestions } from "@/lib/manga/service";
-import { SearchHeader } from "./SearchHeader";
+import { AutoHideHeader } from "./AutoHideHeader";
 
 export async function Header() {
   const suggestions = await getSearchSuggestionsSafely();
 
-  return (
-    <header className="sticky top-0 z-20 border-b border-stone-200 bg-white/95 px-3 py-3 backdrop-blur sm:px-5">
-      <SearchHeader tags={suggestions.tags} authors={suggestions.authors} />
-    </header>
-  );
+  return <AutoHideHeader tags={suggestions.tags} authors={suggestions.authors} />;
 }
 
 async function getSearchSuggestionsSafely() {
