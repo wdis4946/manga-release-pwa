@@ -794,6 +794,10 @@ async function findCoverImageFromOfficialPages({
   for (const sourceUrl of sourceUrls) {
     try {
       const html = await fetchHtml(sourceUrl);
+      if (!sourcePageMatchesSeries(html, series, isbns)) {
+        continue;
+      }
+
       const candidate = extractImageCandidates(html, sourceUrl, series, isbns)[0];
       if (candidate && (!best || candidate.score > best.score)) {
         best = { sourceUrl, imageUrl: candidate.url, score: candidate.score };
@@ -991,7 +995,7 @@ function isLikelyOfficialProductUrl(url: string) {
         path === "/book" &&
         (parsed.searchParams.has("isbn") || parsed.searchParams.has("jdcn"))) ||
       (domain === "www.kodansha.co.jp" &&
-        /^\/(comic\/products|titles)\/[^/]+\/?$/.test(path)) ||
+        /^\/comic\/products\/[^/]+\/?$/.test(path)) ||
       (domain === "www.kadokawa.co.jp" && /^\/product\/[^/]+\/?$/.test(path)) ||
       (domain === "store.kadokawa.co.jp" && /^\/shop\/g\/g[^/]+\/?$/.test(path)) ||
       (domain === "www.akitashoten.co.jp" && /^\/(series|comics)\/[^/]+\/?$/.test(path)) ||
@@ -1007,6 +1011,33 @@ function isLikelyOfficialProductUrl(url: string) {
   } catch {
     return false;
   }
+}
+
+function sourcePageMatchesSeries(
+  html: string,
+  series: SeriesRow,
+  isbns: string[],
+) {
+  const comparableHtml = normalizeComparableText(html);
+  const titleTokens = uniqueStrings([
+    series.display_title,
+    series.search_title,
+    stripBracketedSubtitle(series.display_title),
+    stripBracketedSubtitle(series.search_title),
+    stripParentheticalSuffix(series.display_title),
+    stripParentheticalSuffix(series.search_title),
+  ])
+    .map(normalizeComparableText)
+    .filter((token) => token.length >= 2);
+
+  if (titleTokens.some((token) => comparableHtml.includes(token))) {
+    return true;
+  }
+
+  return isbns.some((isbn) => {
+    const normalized = normalizeIsbn(isbn);
+    return normalized ? comparableHtml.includes(normalized) : false;
+  });
 }
 
 function extractLinks(html: string, baseUrl: string) {
@@ -1141,6 +1172,10 @@ function extractAttribute(attributes: string, name: string) {
 
 function stripBracketedSubtitle(title: string) {
   return title.replace(/[（(][^）)]*[）)]/g, "").replace(/[「」『』]/g, "").trim();
+}
+
+function stripParentheticalSuffix(title: string) {
+  return title.replace(/\s*[\(（][^\)）]*[\)）]\s*$/u, "").trim();
 }
 
 function normalizeComparableText(value: string) {
