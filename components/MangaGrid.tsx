@@ -15,7 +15,7 @@ export function MangaGrid({ manga }: MangaGridProps) {
   }
 
   return (
-    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 2xl:mx-[5.555556vw] 2xl:grid-cols-5">
+    <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-4 2xl:mx-[5.555556vw] 2xl:grid-cols-6">
       {manga.map((item) => (
         <MangaCard key={item.id} manga={item} />
       ))}
