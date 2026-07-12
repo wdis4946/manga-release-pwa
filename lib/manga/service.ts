@@ -34,6 +34,26 @@ type SeriesRow = {
   representative_image_path: string | null;
 };
 
+type DisplayGroupRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  sort_order: number;
+};
+
+type DisplayGroupSeriesRow = {
+  display_group_id: string;
+  series_id: string;
+  sort_order: number;
+};
+
+export type PublicMangaDisplayGroup = {
+  id: string;
+  name: string;
+  description: string | null;
+  manga: Manga[];
+};
+
 export async function getMangaForList(
   filters: MangaFilters,
 ): Promise<{ manga: Manga[]; source: "rakuten" | "mock" }> {
@@ -149,6 +169,106 @@ export async function getPublicMangaSeriesGallery(
   });
 
   return { manga, source: "series" };
+}
+
+export async function getPublicMangaDisplayGroups(): Promise<
+  PublicMangaDisplayGroup[]
+> {
+  const supabase = createSupabaseAdminClient();
+
+  try {
+    const { data: groups, error: groupsError } = await supabase
+      .from("display_groups")
+      .select("id, name, description, sort_order")
+      .eq("is_active", true)
+      .order("sort_order", { ascending: true })
+      .order("name", { ascending: true });
+
+    if (groupsError) {
+      throw groupsError;
+    }
+
+    const groupRows = (groups ?? []) as DisplayGroupRow[];
+    const groupIds = groupRows.map((group) => group.id);
+
+    if (groupIds.length === 0) {
+      return [];
+    }
+
+    const { data: links, error: linksError } = await supabase
+      .from("display_group_series")
+      .select("display_group_id, series_id, sort_order")
+      .in("display_group_id", groupIds)
+      .order("sort_order", { ascending: true })
+      .order("series_id", { ascending: true });
+
+    if (linksError) {
+      throw linksError;
+    }
+
+    const linkRows = (links ?? []) as DisplayGroupSeriesRow[];
+    const seriesIds = [...new Set(linkRows.map((link) => link.series_id))];
+
+    if (seriesIds.length === 0) {
+      return [];
+    }
+
+    const { data: series, error: seriesError } = await supabase
+      .from("series")
+      .select(
+        "id, display_title, search_title, description, representative_image_path",
+      )
+      .in("id", seriesIds)
+      .not("representative_image_path", "is", null)
+      .neq("representative_image_path", "");
+
+    if (seriesError) {
+      throw seriesError;
+    }
+
+    const seriesById = new Map(
+      ((series ?? []) as SeriesRow[]).map((row) => [row.id, row]),
+    );
+    const linksByGroupId = new Map<string, DisplayGroupSeriesRow[]>();
+
+    for (const link of linkRows) {
+      const groupLinks = linksByGroupId.get(link.display_group_id) ?? [];
+      groupLinks.push(link);
+      linksByGroupId.set(link.display_group_id, groupLinks);
+    }
+
+    return groupRows.flatMap((group) => {
+      const manga = (linksByGroupId.get(group.id) ?? []).flatMap((link) => {
+        const row = seriesById.get(link.series_id);
+        const coverImageUrl = createPublicSeriesCoverUrl(
+          supabase,
+          row?.representative_image_path,
+        );
+
+        if (!row || !coverImageUrl) {
+          return [];
+        }
+
+        return [toSeriesManga(row, coverImageUrl)];
+      });
+
+      if (manga.length === 0) {
+        return [];
+      }
+
+      return [
+        {
+          id: group.id,
+          name: group.name,
+          description: group.description,
+          manga,
+        },
+      ];
+    });
+  } catch (error) {
+    console.error("[Public manga] Failed to load display groups.", error);
+    return [];
+  }
 }
 
 export async function getPublicSearchSuggestions(): Promise<{
