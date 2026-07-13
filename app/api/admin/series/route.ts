@@ -12,6 +12,12 @@ type AdminSeriesListRow = {
   representative_image_path: string | null;
 };
 
+type CreateSeriesRequest = {
+  displayTitle?: string;
+  searchTitle?: string;
+  description?: string | null;
+};
+
 async function toSeriesResponse(
   row: AdminSeriesListRow,
   itemCount: number,
@@ -184,6 +190,63 @@ export async function GET(request: Request) {
     page,
     pageSize: PAGE_SIZE,
     total: count ?? 0,
+  });
+}
+
+export async function POST(request: Request) {
+  const user = await getAdminUser(request);
+
+  if (!user) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = (await request.json().catch(() => ({}))) as CreateSeriesRequest;
+  const displayTitle = body.displayTitle?.trim();
+  const searchTitle = body.searchTitle?.trim() || displayTitle;
+  const description = body.description?.trim() || null;
+
+  if (!displayTitle || !searchTitle) {
+    return Response.json(
+      { error: "Display title is required." },
+      { status: 400 },
+    );
+  }
+
+  const supabase = createSupabaseAdminClient();
+  const { data, error } = await supabase
+    .from("series")
+    .insert({
+      display_title: displayTitle,
+      search_title: searchTitle,
+      description,
+    })
+    .select(
+      "id, search_title, display_title, description, representative_image_path",
+    )
+    .single();
+
+  if (error) {
+    const status = error.code === "23505" ? 409 : 500;
+    return Response.json({ error: error.message }, { status });
+  }
+
+  const { error: categoryError } = await supabase
+    .from("series_categories")
+    .insert({
+      series_id: data.id,
+      category_number: 0,
+      category_name: "単行本",
+    });
+
+  if (categoryError && categoryError.code !== "23505") {
+    console.error("[Admin series] Failed to create default category.", {
+      seriesId: data.id,
+      error: categoryError,
+    });
+  }
+
+  return Response.json({
+    series: await toSeriesResponse(data as AdminSeriesListRow, 0, supabase),
   });
 }
 

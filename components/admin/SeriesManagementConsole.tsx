@@ -88,6 +88,18 @@ type CategoryDraft = {
   categoryName: string;
 };
 
+type NewSeriesForm = {
+  displayTitle: string;
+  searchTitle: string;
+  description: string;
+};
+
+const emptyNewSeriesForm: NewSeriesForm = {
+  displayTitle: "",
+  searchTitle: "",
+  description: "",
+};
+
 export function SeriesManagementConsole({
   initialQuery = "",
 }: SeriesManagementConsoleProps) {
@@ -105,6 +117,9 @@ export function SeriesManagementConsole({
   const [newItemIsbn, setNewItemIsbn] = useState("");
   const [isLinkingItem, setIsLinkingItem] = useState(false);
   const [queryText, setQueryText] = useState(initialQuery);
+  const [newSeriesForm, setNewSeriesForm] =
+    useState<NewSeriesForm>(emptyNewSeriesForm);
+  const [isCreatingSeries, setIsCreatingSeries] = useState(false);
   const [imprintFilterText, setImprintFilterText] = useState("");
   const [publisherFilterText, setPublisherFilterText] = useState("");
   const [agentFilterText, setAgentFilterText] = useState("");
@@ -745,6 +760,49 @@ export function SeriesManagementConsole({
     await Promise.all([loadSeriesDetail(selectedSeriesId), loadSeries()]);
     setNewItemIsbn("");
     setIsLinkingItem(false);
+  }
+
+  async function createSeries(event: React.FormEvent) {
+    event.preventDefault();
+
+    if (!newSeriesForm.displayTitle.trim()) {
+      setError("シリーズ名を入力してください。");
+      return;
+    }
+
+    setIsCreatingSeries(true);
+    setError("");
+    const response = await authorizedFetch("/api/admin/series", {
+      method: "POST",
+      body: JSON.stringify({
+        displayTitle: newSeriesForm.displayTitle.trim(),
+        searchTitle: newSeriesForm.searchTitle.trim() || undefined,
+        description: newSeriesForm.description,
+      }),
+    });
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError(
+        response.status === 409
+          ? "同じシリーズが既に存在します。"
+          : "シリーズを作成できませんでした。",
+      );
+      setIsCreatingSeries(false);
+      return;
+    }
+
+    const data = (await response.json()) as { series: ManagedMangaSeries };
+    setNewSeriesForm(emptyNewSeriesForm);
+    setSelectedSeriesId(data.series.id);
+    setSelectedSeries(data.series);
+    setPage(1);
+    await Promise.all([loadSeries(), loadSeriesDetail(data.series.id)]);
+    setIsCreatingSeries(false);
   }
 
   async function updateTitle(event: React.FormEvent) {
@@ -1776,6 +1834,66 @@ export function SeriesManagementConsole({
         <aside className="border-r border-stone-200 bg-white xl:h-[calc(100vh-130px)]">
           <form
             className="border-b border-stone-200 p-3"
+            onSubmit={(event) => void createSeries(event)}
+          >
+            <div className="mb-3 flex items-center gap-2">
+              <Plus className="size-4 text-cyan-700" />
+              <p className="text-sm font-bold text-stone-900">
+                新規シリーズ作成
+              </p>
+            </div>
+            <div className="grid gap-2">
+              <input
+                value={newSeriesForm.displayTitle}
+                onChange={(event) =>
+                  setNewSeriesForm((current) => ({
+                    ...current,
+                    displayTitle: event.target.value,
+                  }))
+                }
+                placeholder="表示タイトル"
+                className="h-9 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+              />
+              <input
+                value={newSeriesForm.searchTitle}
+                onChange={(event) =>
+                  setNewSeriesForm((current) => ({
+                    ...current,
+                    searchTitle: event.target.value,
+                  }))
+                }
+                placeholder="検索用タイトル（空なら表示タイトル）"
+                className="h-9 w-full rounded-md border border-stone-300 px-3 text-sm outline-none focus:border-cyan-700"
+              />
+              <textarea
+                value={newSeriesForm.description}
+                onChange={(event) =>
+                  setNewSeriesForm((current) => ({
+                    ...current,
+                    description: event.target.value,
+                  }))
+                }
+                placeholder="あらすじ（任意）"
+                rows={3}
+                className="w-full rounded-md border border-stone-300 px-3 py-2 text-sm outline-none focus:border-cyan-700"
+              />
+            </div>
+            <button
+              type="submit"
+              disabled={isCreatingSeries || !newSeriesForm.displayTitle.trim()}
+              className="mt-3 flex h-9 w-full items-center justify-center gap-2 rounded-md bg-cyan-700 px-3 text-sm font-semibold text-white hover:bg-cyan-800 disabled:opacity-40"
+            >
+              {isCreatingSeries ? (
+                <LoaderCircle className="size-4 animate-spin" />
+              ) : (
+                <Plus className="size-4" />
+              )}
+              作成
+            </button>
+          </form>
+
+          <form
+            className="border-b border-stone-200 p-3"
             onSubmit={(event) => {
               event.preventDefault();
               setPage(1);
@@ -1825,7 +1943,7 @@ export function SeriesManagementConsole({
             </div>
           </form>
 
-          <div className="max-h-[60vh] overflow-y-auto xl:max-h-[calc(100vh-227px)]">
+          <div className="max-h-[60vh] overflow-y-auto xl:max-h-[calc(100vh-484px)]">
             {isLoading ? (
               <div className="flex h-40 items-center justify-center">
                 <LoaderCircle className="size-5 animate-spin text-cyan-700" />

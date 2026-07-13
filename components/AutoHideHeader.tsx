@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { SearchHeader } from "./SearchHeader";
 
 type Suggestion = {
@@ -16,8 +17,14 @@ type AutoHideHeaderProps = {
 export function AutoHideHeader({ tags, authors }: AutoHideHeaderProps) {
   const [isHidden, setIsHidden] = useState(false);
   const lastScrollYRef = useRef(0);
+  const pathname = usePathname();
+  const isAdminPage = pathname.startsWith("/admin");
 
   useEffect(() => {
+    if (isAdminPage) {
+      return;
+    }
+
     lastScrollYRef.current = window.scrollY;
 
     function handleScroll() {
@@ -38,7 +45,11 @@ export function AutoHideHeader({ tags, authors }: AutoHideHeaderProps) {
     window.addEventListener("scroll", handleScroll, { passive: true });
 
     return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
+  }, [isAdminPage]);
+
+  if (isAdminPage) {
+    return null;
+  }
 
   return (
     <header
