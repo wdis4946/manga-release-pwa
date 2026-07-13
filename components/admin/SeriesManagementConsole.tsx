@@ -100,6 +100,17 @@ const emptyNewSeriesForm: NewSeriesForm = {
   description: "",
 };
 
+function parseIsbnInput(value: string) {
+  return [
+    ...new Set(
+      value
+        .split(/[\s,、，]+/)
+        .map((isbn) => isbn.replace(/[-‐‑‒–—―ー－]/g, "").trim())
+        .filter(Boolean),
+    ),
+  ];
+}
+
 export function SeriesManagementConsole({
   initialQuery = "",
 }: SeriesManagementConsoleProps) {
@@ -726,9 +737,9 @@ export function SeriesManagementConsole({
       return;
     }
 
-    const isbn = newItemIsbn.replace(/[-\s]/g, "").trim();
+    const isbns = parseIsbnInput(newItemIsbn);
 
-    if (!isbn) {
+    if (isbns.length === 0) {
       setError("ISBNを入力してください。");
       return;
     }
@@ -739,7 +750,7 @@ export function SeriesManagementConsole({
       `/api/admin/series/${selectedSeriesId}/items`,
       {
         method: "POST",
-        body: JSON.stringify({ isbn }),
+        body: JSON.stringify({ isbns }),
       },
     );
 
@@ -2795,15 +2806,19 @@ export function SeriesManagementConsole({
               >
                 <label className="flex min-w-[220px] flex-1 flex-col gap-1">
                   <span className="text-[11px] font-semibold text-stone-500">
-                    追加するISBN
+                    追加するISBN（複数可）
                   </span>
-                  <input
+                  <textarea
                     value={newItemIsbn}
                     onChange={(event) => setNewItemIsbn(event.target.value)}
-                    placeholder="978..."
+                    placeholder={"978...\n978..."}
                     inputMode="numeric"
-                    className="h-9 rounded-md border border-stone-300 px-3 font-mono text-sm outline-none focus:border-cyan-700"
+                    rows={3}
+                    className="rounded-md border border-stone-300 px-3 py-2 font-mono text-sm outline-none focus:border-cyan-700"
                   />
+                  <span className="text-[11px] text-stone-500">
+                    改行、カンマ、スペース区切りでまとめて登録できます
+                  </span>
                 </label>
                 <button
                   type="submit"
