@@ -39,14 +39,7 @@ async function main() {
       await applyBatchRepeatedly(args);
       break;
     case "collect-sources":
-      await callJobsApi("collect-sources", {
-        limit: numberArg(args, "limit", 10),
-        offset: numberArg(args, "offset", 0),
-        includeUndescribed: Boolean(args["include-undescribed"]),
-        includeImageSet: Boolean(args["include-image-set"]),
-        search: !Boolean(args["no-search"]),
-        refetch: Boolean(args.refetch),
-      }, args);
+      await collectSourcesRepeatedly(args);
       break;
     case "import-source-urls":
       await importSourceUrls(args);
@@ -124,6 +117,32 @@ async function runRepeatedly(args) {
 
     if (
       result.claimedCount === 0 ||
+      index === repeat - 1 ||
+      intervalMs <= 0
+    ) {
+      continue;
+    }
+
+    await sleep(intervalMs);
+  }
+}
+
+async function collectSourcesRepeatedly(args) {
+  const repeat = numberArg(args, "repeat", 1);
+  const intervalMs = numberArg(args, "interval-ms", 0);
+
+  for (let index = 0; index < repeat; index += 1) {
+    const result = await callJobsApi("collect-sources", {
+      limit: numberArg(args, "limit", 10),
+      offset: numberArg(args, "offset", 0),
+      includeUndescribed: Boolean(args["include-undescribed"]),
+      includeImageSet: Boolean(args["include-image-set"]),
+      search: !Boolean(args["no-search"]),
+      refetch: Boolean(args.refetch),
+    }, args);
+
+    if (
+      result.targetCount === 0 ||
       index === repeat - 1 ||
       intervalMs <= 0
     ) {
@@ -438,7 +457,7 @@ function printHelp() {
   console.log(`Usage:
   node scripts/series-summary-jobs.mjs enqueue [--limit 100] [--batch-size 100] [--repeat 1] [--interval-ms 15000] [--offset 0]
   node scripts/series-summary-jobs.mjs import-source-urls --input data/source-urls.csv [--fetch]
-  node scripts/series-summary-jobs.mjs collect-sources [--limit 10] [--offset 0] [--no-search] [--refetch]
+  node scripts/series-summary-jobs.mjs collect-sources [--limit 10] [--repeat 1] [--interval-ms 15000] [--offset 0] [--no-search] [--refetch]
   node scripts/series-summary-jobs.mjs run [--limit 1] [--repeat 1] [--interval-ms 60000] [--dry-run]
   node scripts/series-summary-jobs.mjs batch-submit [--limit 100] [--offset 0] [--model MODEL]
   node scripts/series-summary-jobs.mjs batch-status --batch batch_id
