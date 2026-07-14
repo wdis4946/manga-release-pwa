@@ -270,7 +270,11 @@ async function resolveFilteredSeriesIds({
       publisherQuery = publisherQuery.ilike("imprint_name", `%${imprintText}%`);
     }
 
-    if (publisherText) {
+    if (publisherText && !imprintText) {
+      publisherQuery = publisherQuery.or(
+        `imprint_name.ilike.%${publisherText}%,publisher_name.ilike.%${publisherText}%`,
+      );
+    } else if (publisherText) {
       publisherQuery = publisherQuery.ilike(
         "publisher_name",
         `%${publisherText}%`,

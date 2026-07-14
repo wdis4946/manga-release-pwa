@@ -54,6 +54,8 @@ type SeriesSearchResponse = {
   series: SeriesSearchResult[];
 };
 
+type SeriesSearchMode = "keyword" | "author" | "publisher";
+
 type GroupFormState = {
   name: string;
   description: string;
@@ -95,16 +97,32 @@ export function DisplayGroupsManagementConsole() {
   const [newForm, setNewForm] = useState<GroupFormState>(emptyForm);
   const [editForm, setEditForm] = useState<GroupFormState>(emptyForm);
   const [seriesQuery, setSeriesQuery] = useState("");
+  const [seriesSearchMode, setSeriesSearchMode] =
+    useState<SeriesSearchMode>("keyword");
   const [seriesResults, setSeriesResults] = useState<SeriesSearchResult[]>([]);
+  const [selectedResultIds, setSelectedResultIds] = useState<string[]>([]);
   const [isLoadingGroups, setIsLoadingGroups] = useState(true);
   const [isLoadingDetail, setIsLoadingDetail] = useState(false);
   const [isSearching, setIsSearching] = useState(false);
+  const [isLinkingSeries, setIsLinkingSeries] = useState(false);
+  const [isSavingSeriesOrder, setIsSavingSeriesOrder] = useState(false);
+  const [isSeriesOrderDirty, setIsSeriesOrderDirty] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const [error, setError] = useState("");
 
   const selectedGroup = useMemo(
     () => groups.find((group) => group.id === selectedGroupId) ?? null,
     [groups, selectedGroupId],
+  );
+
+  const linkedSeriesIds = useMemo(
+    () => new Set(linkedSeries.map((series) => series.id)),
+    [linkedSeries],
+  );
+
+  const selectableSeriesResults = useMemo(
+    () => seriesResults.filter((series) => !linkedSeriesIds.has(series.id)),
+    [linkedSeriesIds, seriesResults],
   );
 
   const authorizedFetch = useCallback(
@@ -159,6 +177,7 @@ export function DisplayGroupsManagementConsole() {
     async (groupId: string) => {
       if (!accessToken || !groupId) {
         setLinkedSeries([]);
+        setIsSeriesOrderDirty(false);
         setEditForm(emptyForm);
         return;
       }
@@ -181,6 +200,7 @@ export function DisplayGroupsManagementConsole() {
       const data = (await response.json()) as DisplayGroupDetailResponse;
       setEditForm(toFormState(data.displayGroup));
       setLinkedSeries(data.series);
+      setIsSeriesOrderDirty(false);
       setIsLoadingDetail(false);
     },
     [accessToken, authorizedFetch, handleUnauthorized],
@@ -327,6 +347,7 @@ export function DisplayGroupsManagementConsole() {
 
     if (!seriesQuery.trim()) {
       setSeriesResults([]);
+      setSelectedResultIds([]);
       return;
     }
 
@@ -337,8 +358,15 @@ export function DisplayGroupsManagementConsole() {
       page: "1",
     });
 
-    if (normalizedIsbn.length === 10 || normalizedIsbn.length === 13) {
+    if (
+      seriesSearchMode === "keyword" &&
+      (normalizedIsbn.length === 10 || normalizedIsbn.length === 13)
+    ) {
       params.set("isbn", normalizedIsbn);
+    } else if (seriesSearchMode === "author") {
+      params.set("agent", seriesQuery.trim());
+    } else if (seriesSearchMode === "publisher") {
+      params.set("publisher", seriesQuery.trim());
     } else {
       params.set("q", seriesQuery.trim());
     }
@@ -358,6 +386,7 @@ export function DisplayGroupsManagementConsole() {
 
     const data = (await response.json()) as SeriesSearchResponse;
     setSeriesResults(data.series);
+    setSelectedResultIds([]);
     setIsSearching(false);
   }
 
@@ -389,17 +418,114 @@ export function DisplayGroupsManagementConsole() {
     await loadGroups();
   }
 
-  async function updateSeriesOrder(seriesId: string, sortOrder: number) {
-    if (!selectedGroup || !Number.isInteger(sortOrder)) {
+  async function linkSelectedSeries() {
+    if (!selectedGroup) {
       return;
     }
 
+    const targetSeriesIds = [
+      ...new Set(
+        selectedResultIds.filter((seriesId) => !linkedSeriesIds.has(seriesId)),
+      ),
+    ];
+
+    if (targetSeriesIds.length === 0) {
+      return;
+    }
+
+    setIsLinkingSeries(true);
     setError("");
     const response = await authorizedFetch(
-      `/api/admin/display-groups/${selectedGroup.id}/series/${seriesId}`,
+      `/api/admin/display-groups/${selectedGroup.id}/series`,
+      {
+        method: "POST",
+        body: JSON.stringify({ seriesIds: targetSeriesIds }),
+      },
+    );
+
+    if (response.status === 401) {
+      await handleUnauthorized();
+      return;
+    }
+
+    if (!response.ok) {
+      setError("シリーズをまとめて紐づけできませんでした。");
+      setIsLinkingSeries(false);
+      return;
+    }
+
+    setSelectedResultIds((current) =>
+      current.filter((seriesId) => !targetSeriesIds.includes(seriesId)),
+    );
+    await loadGroupDetail(selectedGroup.id);
+    await loadGroups();
+    setIsLinkingSeries(false);
+  }
+
+  function toggleResultSelection(seriesId: string) {
+    setSelectedResultIds((current) =>
+      current.includes(seriesId)
+        ? current.filter((selectedId) => selectedId !== seriesId)
+        : [...current, seriesId],
+    );
+  }
+
+  function toggleAllResultSelection() {
+    const selectableIds = selectableSeriesResults.map((series) => series.id);
+
+    if (selectableIds.length === 0) {
+      return;
+    }
+
+    if (selectableIds.every((seriesId) => selectedResultIds.includes(seriesId))) {
+      setSelectedResultIds((current) =>
+        current.filter((seriesId) => !selectableIds.includes(seriesId)),
+      );
+      return;
+    }
+
+    setSelectedResultIds((current) => [
+      ...new Set([...current, ...selectableIds]),
+    ]);
+  }
+
+  function updateSeriesOrderLocally(seriesId: string, sortOrder: number) {
+    if (!Number.isInteger(sortOrder) || sortOrder < 0) {
+      return;
+    }
+
+    setLinkedSeries((current) =>
+      current
+        .map((series) =>
+          series.id === seriesId ? { ...series, sortOrder } : series,
+        )
+        .sort(
+          (left, right) =>
+            left.sortOrder - right.sortOrder ||
+            left.displayTitle.localeCompare(right.displayTitle, "ja") ||
+            left.id.localeCompare(right.id),
+        ),
+    );
+    setIsSeriesOrderDirty(true);
+  }
+
+  async function saveSeriesOrder() {
+    if (!selectedGroup || !isSeriesOrderDirty) {
+      return;
+    }
+
+    setIsSavingSeriesOrder(true);
+    setError("");
+    const response = await authorizedFetch(
+      `/api/admin/display-groups/${selectedGroup.id}/series`,
       {
         method: "PATCH",
-        body: JSON.stringify({ sortOrder }),
+        body: JSON.stringify({
+          seriesOrders: linkedSeries.map((series) => ({
+            seriesId: series.id,
+            sortOrder: series.sortOrder,
+          })),
+        }),
       },
     );
 
@@ -410,10 +536,12 @@ export function DisplayGroupsManagementConsole() {
 
     if (!response.ok) {
       setError("並び順を更新できませんでした。");
+      setIsSavingSeriesOrder(false);
       return;
     }
 
     await loadGroupDetail(selectedGroup.id);
+    setIsSavingSeriesOrder(false);
   }
 
   async function unlinkSeries(seriesId: string) {
@@ -583,6 +711,30 @@ export function DisplayGroupsManagementConsole() {
                 <h2 className="text-base font-bold text-stone-950">
                   シリーズを紐づけ
                 </h2>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {[
+                    ["keyword", "タイトル/ISBN"],
+                    ["author", "作者"],
+                    ["publisher", "出版社"],
+                  ].map(([mode, label]) => (
+                    <button
+                      key={mode}
+                      type="button"
+                      onClick={() => {
+                        setSeriesSearchMode(mode as SeriesSearchMode);
+                        setSeriesResults([]);
+                        setSelectedResultIds([]);
+                      }}
+                      className={`h-8 rounded-md border px-3 text-xs font-semibold ${
+                        seriesSearchMode === mode
+                          ? "border-cyan-700 bg-cyan-50 text-cyan-800"
+                          : "border-stone-300 bg-white text-stone-600 hover:bg-stone-100"
+                      }`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                </div>
                 <form
                   onSubmit={searchSeries}
                   className="mt-3 flex flex-col gap-2 sm:flex-row"
@@ -592,7 +744,13 @@ export function DisplayGroupsManagementConsole() {
                     <input
                       value={seriesQuery}
                       onChange={(event) => setSeriesQuery(event.target.value)}
-                      placeholder="ISBNまたはシリーズ名で検索"
+                      placeholder={
+                        seriesSearchMode === "author"
+                          ? "作者名で検索"
+                          : seriesSearchMode === "publisher"
+                            ? "出版社名で検索"
+                            : "ISBNまたはシリーズ名で検索"
+                      }
                       className="h-9 w-full rounded-md border border-stone-300 pl-9 pr-3 text-sm outline-none focus:border-cyan-700"
                     />
                   </div>
@@ -611,17 +769,49 @@ export function DisplayGroupsManagementConsole() {
                 </form>
 
                 {seriesResults.length > 0 ? (
-                  <div className="mt-3 grid gap-2 md:grid-cols-2">
+                  <div className="mt-3 space-y-3">
+                    <div className="flex flex-wrap items-center justify-between gap-2 rounded-md border border-stone-200 bg-stone-50 px-3 py-2">
+                      <label className="flex items-center gap-2 text-xs font-semibold text-stone-700">
+                        <input
+                          type="checkbox"
+                          checked={
+                            selectableSeriesResults.length > 0 &&
+                            selectableSeriesResults.every((series) =>
+                              selectedResultIds.includes(series.id),
+                            )
+                          }
+                          onChange={toggleAllResultSelection}
+                        />
+                        検索結果をすべて選択
+                      </label>
+                      <button
+                        type="button"
+                        disabled={
+                          isLinkingSeries || selectedResultIds.length === 0
+                        }
+                        onClick={() => void linkSelectedSeries()}
+                        className="flex h-8 items-center gap-2 rounded-md bg-cyan-700 px-3 text-xs font-semibold text-white hover:bg-cyan-800 disabled:opacity-50"
+                      >
+                        {isLinkingSeries ? (
+                          <LoaderCircle className="size-3.5 animate-spin" />
+                        ) : (
+                          <Link2 className="size-3.5" />
+                        )}
+                        選択したシリーズを追加
+                      </button>
+                    </div>
+                    <div className="grid gap-2 md:grid-cols-2">
                     {seriesResults.map((series) => (
                       <SeriesSearchCard
                         key={series.id}
                         series={series}
-                        disabled={linkedSeries.some(
-                          (linked) => linked.id === series.id,
-                        )}
+                        disabled={linkedSeriesIds.has(series.id)}
+                        selected={selectedResultIds.includes(series.id)}
+                        onSelect={() => toggleResultSelection(series.id)}
                         onLink={() => void linkSeries(series.id)}
                       />
                     ))}
+                    </div>
                   </div>
                 ) : null}
               </div>
@@ -631,9 +821,28 @@ export function DisplayGroupsManagementConsole() {
                   <h2 className="text-base font-bold text-stone-950">
                     紐づけ済みシリーズ
                   </h2>
-                  {isLoadingDetail ? (
-                    <LoaderCircle className="size-4 animate-spin text-cyan-700" />
-                  ) : null}
+                  <div className="flex items-center gap-2">
+                    {isLoadingDetail ? (
+                      <LoaderCircle className="size-4 animate-spin text-cyan-700" />
+                    ) : null}
+                    <button
+                      type="button"
+                      disabled={
+                        !isSeriesOrderDirty ||
+                        isSavingSeriesOrder ||
+                        linkedSeries.length === 0
+                      }
+                      onClick={() => void saveSeriesOrder()}
+                      className="flex h-8 items-center gap-2 rounded-md bg-cyan-700 px-3 text-xs font-semibold text-white hover:bg-cyan-800 disabled:opacity-50"
+                    >
+                      {isSavingSeriesOrder ? (
+                        <LoaderCircle className="size-3.5 animate-spin" />
+                      ) : (
+                        <Check className="size-3.5" />
+                      )}
+                      並び順を保存
+                    </button>
+                  </div>
                 </div>
                 {linkedSeries.length === 0 ? (
                   <p className="py-8 text-center text-sm text-stone-500">
@@ -645,8 +854,8 @@ export function DisplayGroupsManagementConsole() {
                       <LinkedSeriesRow
                         key={series.id}
                         series={series}
-                        onUpdateOrder={(sortOrder) =>
-                          void updateSeriesOrder(series.id, sortOrder)
+                        onChangeOrder={(sortOrder) =>
+                          updateSeriesOrderLocally(series.id, sortOrder)
                         }
                         onUnlink={() => void unlinkSeries(series.id)}
                       />
@@ -724,14 +933,26 @@ function GroupFields({
 function SeriesSearchCard({
   series,
   disabled,
+  selected,
+  onSelect,
   onLink,
 }: {
   series: SeriesSearchResult;
   disabled: boolean;
+  selected: boolean;
+  onSelect: () => void;
   onLink: () => void;
 }) {
   return (
     <div className="flex items-center gap-3 rounded-md border border-stone-200 p-2">
+      <input
+        type="checkbox"
+        checked={selected}
+        disabled={disabled}
+        onChange={onSelect}
+        className="size-4 shrink-0"
+        aria-label={`${series.displayTitle}を選択`}
+      />
       <SeriesThumb src={series.representativeImageUrl} title={series.displayTitle} />
       <div className="min-w-0 flex-1">
         <p className="truncate text-sm font-semibold text-stone-900">
@@ -754,11 +975,11 @@ function SeriesSearchCard({
 
 function LinkedSeriesRow({
   series,
-  onUpdateOrder,
+  onChangeOrder,
   onUnlink,
 }: {
   series: LinkedSeries;
-  onUpdateOrder: (sortOrder: number) => void;
+  onChangeOrder: (sortOrder: number) => void;
   onUnlink: () => void;
 }) {
   return (
@@ -772,8 +993,11 @@ function LinkedSeriesRow({
       </div>
       <input
         type="number"
-        defaultValue={series.sortOrder}
-        onBlur={(event) => onUpdateOrder(Number.parseInt(event.target.value, 10))}
+        min={0}
+        value={series.sortOrder}
+        onChange={(event) =>
+          onChangeOrder(Number.parseInt(event.target.value, 10))
+        }
         className="h-8 w-20 rounded-md border border-stone-300 px-2 text-sm outline-none focus:border-cyan-700"
         aria-label={`${series.displayTitle}の並び順`}
       />
