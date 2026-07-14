@@ -228,7 +228,7 @@ export async function GET(request: Request, context: RouteContext) {
         isbn: link.isbn,
         categoryNumber: link.category_number,
         categoryName:
-          categoryNamesByNumber.get(link.category_number) ?? "default",
+          categoryNamesByNumber.get(link.category_number) ?? "単行本",
         displayOrder: link.display_order,
         title:
           item?.title ??

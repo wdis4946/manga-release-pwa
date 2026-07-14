@@ -105,7 +105,7 @@ export async function POST(request: Request, context: RouteContext) {
       {
         series_id: id,
         category_number: 0,
-        category_name: "default",
+        category_name: "単行本",
       },
       {
         ignoreDuplicates: true,
