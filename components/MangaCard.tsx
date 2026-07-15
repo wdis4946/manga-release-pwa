@@ -98,7 +98,7 @@ export function MangaCard({ manga }: MangaCardProps) {
 
       {isOpen ? (
         <div
-          className="fixed inset-x-0 bottom-0 top-[72px] z-10 bg-stone-950/70 px-2 pb-3 backdrop-blur-[2px] sm:px-4"
+          className="fixed inset-x-0 bottom-0 top-[72px] z-10 bg-stone-950/90 px-2 pb-3 backdrop-blur-[2px] sm:px-4"
           role="dialog"
           aria-modal="true"
           aria-label={`${manga.title}の詳細`}
@@ -113,7 +113,7 @@ export function MangaCard({ manga }: MangaCardProps) {
               type="button"
               title="閉じる"
               onClick={() => setIsOpen(false)}
-              className="absolute right-3 top-3 z-10 flex size-10 items-center justify-center rounded-full bg-black/45 text-white ring-1 ring-white/20 hover:bg-black/60"
+              className="fixed right-2 top-[84px] z-10 flex size-10 items-center justify-center rounded-full bg-black/55 text-white ring-1 ring-white/20 hover:bg-black/70 sm:right-4"
             >
               <X className="size-5" />
             </button>
@@ -130,7 +130,7 @@ export function MangaCard({ manga }: MangaCardProps) {
               />
             </div>
 
-            <div className="h-[62%] overflow-y-auto bg-transparent px-5 py-6 [scrollbar-color:rgba(255,255,255,0.72)_transparent] [scrollbar-width:thin] sm:px-7 md:h-full md:px-9 md:py-8 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/60 [&::-webkit-scrollbar-track]:bg-transparent">
+            <div className="h-[62%] overflow-y-auto bg-transparent py-6 pl-5 pr-1 [scrollbar-color:rgba(255,255,255,0.72)_transparent] [scrollbar-width:thin] sm:pl-7 sm:pr-1 md:h-full md:py-8 md:pl-9 md:pr-1 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/70 [&::-webkit-scrollbar-track]:bg-transparent">
               {isLoading ? (
                 <div className="flex min-h-80 items-center justify-center">
                   <LoaderCircle className="size-7 animate-spin text-stone-500" />
@@ -154,7 +154,7 @@ function SeriesModalBody({ series }: { series: PublicSeriesDetail }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="pr-10 text-2xl font-bold leading-9 tracking-normal text-white sm:text-3xl">
+        <h1 className="pr-12 text-2xl font-bold leading-9 tracking-normal text-white sm:text-3xl">
           {series.title}
         </h1>
         {series.authors.length > 0 ? (
@@ -177,23 +177,22 @@ function SeriesModalBody({ series }: { series: PublicSeriesDetail }) {
       </div>
 
       {series.description ? (
-        <p className="whitespace-pre-line text-sm leading-8 text-white/85">
+        <p className="whitespace-pre-line text-base leading-8 text-white/85">
           {series.description}
         </p>
       ) : (
-        <p className="text-sm leading-8 text-white/55">
+        <p className="text-base leading-8 text-white/55">
           あらすじはまだ登録されていません。
         </p>
       )}
 
-      <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-white/80">巻一覧</h2>
+      <section>
         {series.categories.length > 0 ? (
           <div className="space-y-4">
             {series.categories.map((category) => (
               <div
                 key={category.categoryNumber}
-                className="rounded-xl border border-white/15 bg-transparent p-3"
+                className="bg-transparent"
               >
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-sm font-semibold text-white/90">
@@ -249,7 +248,7 @@ function SeriesModalBody({ series }: { series: PublicSeriesDetail }) {
             ))}
           </div>
         ) : (
-          <p className="rounded-xl border border-white/15 bg-transparent px-4 py-6 text-sm text-white/55">
+          <p className="bg-transparent px-4 py-6 text-sm text-white/55">
             巻情報はまだ登録されていません。
           </p>
         )}
