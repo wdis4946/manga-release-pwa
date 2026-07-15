@@ -108,24 +108,24 @@ export function MangaCard({ manga }: MangaCardProps) {
             }
           }}
         >
-          <div className="relative grid h-full overflow-hidden rounded-2xl bg-stone-50 shadow-2xl md:grid-cols-[minmax(260px,40%)_1fr] 2xl:mx-[5.555556vw]">
+          <div className="relative grid h-full overflow-hidden rounded-2xl bg-transparent md:grid-cols-[minmax(260px,40%)_1fr] 2xl:mx-[5.555556vw]">
             <button
               type="button"
               title="閉じる"
               onClick={() => setIsOpen(false)}
-              className="absolute right-3 top-3 z-10 flex size-10 items-center justify-center rounded-full bg-white/90 text-stone-700 shadow-sm hover:bg-white"
+              className="absolute right-3 top-3 z-10 flex size-10 items-center justify-center rounded-full bg-black/45 text-white ring-1 ring-white/20 hover:bg-black/60"
             >
               <X className="size-5" />
             </button>
 
-            <div className="relative h-[38%] bg-stone-200 md:h-full">
+            <div className="relative h-[38%] bg-transparent md:h-full">
               <Image
                 src={series?.representativeImageUrl ?? manga.coverImageUrl}
                 alt={`${series?.title ?? manga.title}の代表画像`}
                 fill
                 unoptimized
                 priority
-                className="object-cover"
+                className="object-contain"
                 sizes="(max-width: 768px) 100vw, 40vw"
               />
             </div>
@@ -154,11 +154,11 @@ function SeriesModalBody({ series }: { series: PublicSeriesDetail }) {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="pr-10 text-2xl font-bold leading-9 tracking-normal text-stone-950 sm:text-3xl">
+        <h1 className="pr-10 text-2xl font-bold leading-9 tracking-normal text-white sm:text-3xl">
           {series.title}
         </h1>
         {series.authors.length > 0 ? (
-          <p className="mt-2 text-sm font-medium text-stone-600">
+          <p className="mt-2 text-sm font-medium text-white/75">
             {series.authors.join("、")}
           </p>
         ) : null}
@@ -167,7 +167,7 @@ function SeriesModalBody({ series }: { series: PublicSeriesDetail }) {
             {[...series.publishers, ...series.genres].map((label) => (
               <span
                 key={label}
-                className="rounded-full bg-stone-200 px-2.5 py-1 text-xs font-medium text-stone-600"
+                className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/75 ring-1 ring-white/15"
               >
                 {label}
               </span>
@@ -177,29 +177,29 @@ function SeriesModalBody({ series }: { series: PublicSeriesDetail }) {
       </div>
 
       {series.description ? (
-        <p className="whitespace-pre-line text-sm leading-8 text-stone-700">
+        <p className="whitespace-pre-line text-sm leading-8 text-white/85">
           {series.description}
         </p>
       ) : (
-        <p className="text-sm leading-8 text-stone-500">
+        <p className="text-sm leading-8 text-white/55">
           あらすじはまだ登録されていません。
         </p>
       )}
 
       <section className="space-y-3">
-        <h2 className="text-sm font-semibold text-stone-700">巻一覧</h2>
+        <h2 className="text-sm font-semibold text-white/80">巻一覧</h2>
         {series.categories.length > 0 ? (
           <div className="space-y-4">
             {series.categories.map((category) => (
               <div
                 key={category.categoryNumber}
-                className="rounded-xl border border-stone-200 bg-white p-3"
+                className="rounded-xl border border-white/15 bg-white/5 p-3"
               >
                 <div className="flex items-center justify-between gap-3">
-                  <h3 className="text-sm font-semibold text-stone-800">
+                  <h3 className="text-sm font-semibold text-white/90">
                     {category.categoryName}
                   </h3>
-                  <span className="text-xs text-stone-400">
+                  <span className="text-xs text-white/45">
                     {category.itemCount}冊
                   </span>
                 </div>
@@ -213,27 +213,27 @@ function SeriesModalBody({ series }: { series: PublicSeriesDetail }) {
                         rel={volume.itemUrl ? "noreferrer" : undefined}
                         className="group grid min-w-0 gap-2"
                       >
-                        <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-stone-100">
+                        <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-white/10">
                           {volume.coverImageUrl ? (
                             <Image
                               src={volume.coverImageUrl}
                               alt={volume.title}
                               fill
                               unoptimized
-                              className="object-cover transition group-hover:scale-[1.03]"
+                              className="object-contain transition group-hover:scale-[1.03]"
                               sizes="(max-width: 640px) 30vw, (max-width: 1024px) 18vw, 120px"
                             />
                           ) : (
-                            <div className="flex size-full items-center justify-center px-2 text-center text-[11px] text-stone-400">
+                            <div className="flex size-full items-center justify-center px-2 text-center text-[11px] text-white/45">
                               no image
                             </div>
                           )}
                         </div>
                         <div>
-                          <p className="text-xs font-semibold text-stone-700">
+                          <p className="text-xs font-semibold text-white/80">
                             {volume.label}
                           </p>
-                          <p className="line-clamp-2 text-[11px] leading-4 text-stone-500">
+                          <p className="line-clamp-2 text-[11px] leading-4 text-white/55">
                             {volume.title}
                           </p>
                         </div>
@@ -241,7 +241,7 @@ function SeriesModalBody({ series }: { series: PublicSeriesDetail }) {
                     ))}
                   </div>
                 ) : (
-                  <p className="mt-3 text-xs text-stone-400">
+                  <p className="mt-3 text-xs text-white/45">
                     表示できる巻情報がありません。
                   </p>
                 )}
@@ -249,7 +249,7 @@ function SeriesModalBody({ series }: { series: PublicSeriesDetail }) {
             ))}
           </div>
         ) : (
-          <p className="rounded-xl border border-stone-200 bg-white px-4 py-6 text-sm text-stone-500">
+          <p className="rounded-xl border border-white/15 bg-white/5 px-4 py-6 text-sm text-white/55">
             巻情報はまだ登録されていません。
           </p>
         )}
