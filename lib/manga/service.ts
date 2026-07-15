@@ -59,6 +59,15 @@ type SeriesItemLinkRow = {
   display_order: number;
 };
 
+type RakutenMangaItemRow = {
+  isbn: string;
+  title: string | null;
+  sales_date: string | null;
+  large_image_url: string | null;
+  medium_image_url: string | null;
+  item_url: string | null;
+};
+
 export type PublicMangaDisplayGroup = {
   id: string;
   name: string;
@@ -68,8 +77,8 @@ export type PublicMangaDisplayGroup = {
 
 export type PublicSeriesVolumePreview = {
   isbn: string;
-  role: "first" | "latest";
   label: string;
+  displayOrder: number;
   title: string;
   coverImageUrl: string | null;
   itemUrl: string | null;
@@ -710,6 +719,9 @@ async function buildPublicSeriesCategories(
   links: SeriesItemLinkRow[],
 ): Promise<PublicSeriesCategory[]> {
   const linksByCategory = new Map<number, SeriesItemLinkRow[]>();
+  const rakutenItemsByIsbn = await fetchRakutenMangaItemRows(
+    links.map((link) => link.isbn),
+  );
 
   for (const link of links) {
     const categoryLinks = linksByCategory.get(link.category_number) ?? [];
@@ -737,15 +749,18 @@ async function buildPublicSeriesCategories(
             left.display_order - right.display_order ||
             left.isbn.localeCompare(right.isbn),
         );
-        const previewLinks = selectCategoryPreviewLinks(categoryLinks);
 
         return {
           categoryNumber,
           categoryName: namesByNumber.get(categoryNumber) ?? "単行本",
           itemCount: categoryLinks.length,
           volumes: await Promise.all(
-            previewLinks.map((preview) =>
-              fetchPublicSeriesVolumePreview(preview.link, preview.role),
+            categoryLinks.map((link, index) =>
+              fetchPublicSeriesVolumePreview(
+                link,
+                index,
+                rakutenItemsByIsbn.get(link.isbn),
+              ),
             ),
           ),
         };
@@ -755,40 +770,72 @@ async function buildPublicSeriesCategories(
   return result;
 }
 
-function selectCategoryPreviewLinks(links: SeriesItemLinkRow[]) {
-  if (links.length === 0) {
-    return [];
+async function fetchRakutenMangaItemRows(
+  isbns: string[],
+): Promise<Map<string, RakutenMangaItemRow>> {
+  const supabase = createSupabaseAdminClient();
+  const uniqueIsbns = [...new Set(isbns.filter(Boolean))];
+  const rowsByIsbn = new Map<string, RakutenMangaItemRow>();
+
+  for (let index = 0; index < uniqueIsbns.length; index += 200) {
+    const chunk = uniqueIsbns.slice(index, index + 200);
+    const { data, error } = await supabase
+      .from("rakuten_manga_items")
+      .select(
+        "isbn, title, sales_date, large_image_url, medium_image_url, item_url",
+      )
+      .in("isbn", chunk);
+
+    if (error) {
+      console.error("[Public manga] Failed to load Rakuten manga item rows.", {
+        error,
+      });
+      continue;
+    }
+
+    for (const row of (data ?? []) as RakutenMangaItemRow[]) {
+      rowsByIsbn.set(row.isbn, row);
+    }
   }
 
-  const first = links[0];
-  const latest = links[links.length - 1];
-
-  if (first.isbn === latest.isbn) {
-    return [{ link: first, role: "first" as const }];
-  }
-
-  return [
-    { link: first, role: "first" as const },
-    { link: latest, role: "latest" as const },
-  ];
+  return rowsByIsbn;
 }
 
 async function fetchPublicSeriesVolumePreview(
   link: SeriesItemLinkRow,
-  role: "first" | "latest",
+  index: number,
+  rakutenItem?: RakutenMangaItemRow,
 ): Promise<PublicSeriesVolumePreview> {
+  const fallbackPreview: PublicSeriesVolumePreview = {
+    isbn: link.isbn,
+    label: `${index + 1}巻`,
+    displayOrder: link.display_order,
+    title: rakutenItem?.title ?? link.isbn,
+    coverImageUrl:
+      rakutenItem?.large_image_url ?? rakutenItem?.medium_image_url ?? null,
+    itemUrl: rakutenItem?.item_url ?? null,
+    salesDate: rakutenItem?.sales_date ?? null,
+  };
+
+  if (fallbackPreview.coverImageUrl) {
+    return fallbackPreview;
+  }
+
   try {
     const book = await fetchRakutenBookByIsbn(link.isbn);
 
     return {
       isbn: link.isbn,
-      role,
-      label: role === "first" ? "1巻" : "最新巻",
-      title: book?.title ?? link.isbn,
+      label: fallbackPreview.label,
+      displayOrder: link.display_order,
+      title: book?.title ?? fallbackPreview.title,
       coverImageUrl:
-        book?.largeImageUrl ?? book?.mediumImageUrl ?? book?.smallImageUrl ?? null,
-      itemUrl: book?.affiliateUrl ?? book?.itemUrl ?? null,
-      salesDate: book?.salesDate ?? null,
+        book?.largeImageUrl ??
+        book?.mediumImageUrl ??
+        book?.smallImageUrl ??
+        fallbackPreview.coverImageUrl,
+      itemUrl: book?.affiliateUrl ?? book?.itemUrl ?? fallbackPreview.itemUrl,
+      salesDate: book?.salesDate ?? fallbackPreview.salesDate,
     };
   } catch (error) {
     console.warn("[Public manga] Failed to load Rakuten volume preview.", {
@@ -798,12 +845,12 @@ async function fetchPublicSeriesVolumePreview(
 
     return {
       isbn: link.isbn,
-      role,
-      label: role === "first" ? "1巻" : "最新巻",
-      title: link.isbn,
-      coverImageUrl: null,
-      itemUrl: null,
-      salesDate: null,
+      label: fallbackPreview.label,
+      displayOrder: link.display_order,
+      title: fallbackPreview.title,
+      coverImageUrl: fallbackPreview.coverImageUrl,
+      itemUrl: fallbackPreview.itemUrl,
+      salesDate: fallbackPreview.salesDate,
     };
   }
 }

@@ -93,7 +93,7 @@ export function MangaCard({ manga }: MangaCardProps) {
 
       {isOpen ? (
         <div
-          className="fixed inset-0 z-50 overflow-y-auto bg-stone-950/65 px-3 py-5 backdrop-blur-[2px] sm:px-5"
+          className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
           aria-label={`${manga.title}の詳細`}
@@ -103,42 +103,40 @@ export function MangaCard({ manga }: MangaCardProps) {
             }
           }}
         >
-          <div className="mx-auto grid min-h-[calc(100vh-40px)] w-full max-w-6xl items-center">
-            <div className="relative grid max-h-[calc(100vh-40px)] overflow-hidden rounded-2xl bg-stone-50 shadow-2xl md:grid-cols-[minmax(240px,38%)_1fr]">
-              <button
-                type="button"
-                title="閉じる"
-                onClick={() => setIsOpen(false)}
-                className="absolute right-3 top-3 z-10 flex size-9 items-center justify-center rounded-full bg-white/90 text-stone-700 shadow-sm hover:bg-white"
-              >
-                <X className="size-5" />
-              </button>
+          <div className="relative grid h-dvh w-dvw overflow-hidden bg-stone-50 md:grid-cols-[minmax(280px,42vw)_1fr]">
+            <button
+              type="button"
+              title="閉じる"
+              onClick={() => setIsOpen(false)}
+              className="absolute right-3 top-3 z-10 flex size-10 items-center justify-center rounded-full bg-white/90 text-stone-700 shadow-sm hover:bg-white"
+            >
+              <X className="size-5" />
+            </button>
 
-              <div className="relative min-h-[320px] bg-stone-200 md:min-h-[calc(100vh-40px)]">
-                <Image
-                  src={series?.representativeImageUrl ?? manga.coverImageUrl}
-                  alt={`${series?.title ?? manga.title}の代表画像`}
-                  fill
-                  unoptimized
-                  priority
-                  className="object-cover"
-                  sizes="(max-width: 768px) 100vw, 38vw"
-                />
-              </div>
+            <div className="relative h-[42dvh] bg-stone-200 md:h-dvh">
+              <Image
+                src={series?.representativeImageUrl ?? manga.coverImageUrl}
+                alt={`${series?.title ?? manga.title}の代表画像`}
+                fill
+                unoptimized
+                priority
+                className="object-cover"
+                sizes="(max-width: 768px) 100vw, 42vw"
+              />
+            </div>
 
-              <div className="max-h-[calc(100vh-40px)] overflow-y-auto px-5 py-6 sm:px-7">
-                {isLoading ? (
-                  <div className="flex min-h-80 items-center justify-center">
-                    <LoaderCircle className="size-7 animate-spin text-stone-500" />
-                  </div>
-                ) : error ? (
-                  <p className="py-16 text-center text-sm text-stone-500">
-                    {error}
-                  </p>
-                ) : series ? (
-                  <SeriesModalBody series={series} />
-                ) : null}
-              </div>
+            <div className="h-[58dvh] overflow-y-auto px-5 py-6 sm:px-7 md:h-dvh md:px-9 md:py-8">
+              {isLoading ? (
+                <div className="flex min-h-80 items-center justify-center">
+                  <LoaderCircle className="size-7 animate-spin text-stone-500" />
+                </div>
+              ) : error ? (
+                <p className="py-16 text-center text-sm text-stone-500">
+                  {error}
+                </p>
+              ) : series ? (
+                <SeriesModalBody series={series} />
+              ) : null}
             </div>
           </div>
         </div>
@@ -201,14 +199,14 @@ function SeriesModalBody({ series }: { series: PublicSeriesDetail }) {
                   </span>
                 </div>
                 {category.volumes.length > 0 ? (
-                  <div className="mt-3 flex gap-3">
+                  <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6">
                     {category.volumes.map((volume) => (
                       <a
-                        key={`${category.categoryNumber}:${volume.role}:${volume.isbn}`}
+                        key={`${category.categoryNumber}:${volume.displayOrder}:${volume.isbn}`}
                         href={volume.itemUrl ?? undefined}
                         target={volume.itemUrl ? "_blank" : undefined}
                         rel={volume.itemUrl ? "noreferrer" : undefined}
-                        className="group grid w-24 gap-2"
+                        className="group grid min-w-0 gap-2"
                       >
                         <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-stone-100">
                           {volume.coverImageUrl ? (
@@ -218,7 +216,7 @@ function SeriesModalBody({ series }: { series: PublicSeriesDetail }) {
                               fill
                               unoptimized
                               className="object-cover transition group-hover:scale-[1.03]"
-                              sizes="96px"
+                              sizes="(max-width: 640px) 30vw, (max-width: 1024px) 18vw, 120px"
                             />
                           ) : (
                             <div className="flex size-full items-center justify-center px-2 text-center text-[11px] text-stone-400">
