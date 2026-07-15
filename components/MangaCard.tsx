@@ -20,6 +20,11 @@ export function MangaCard({ manga }: MangaCardProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
 
+  function openModal() {
+    window.dispatchEvent(new Event("public-gallery-modal-open"));
+    setIsOpen(true);
+  }
+
   useEffect(() => {
     if (!isOpen) {
       return;
@@ -77,7 +82,7 @@ export function MangaCard({ manga }: MangaCardProps) {
         <button
           type="button"
           aria-label={`${manga.title}の詳細を見る`}
-          onClick={() => setIsOpen(true)}
+          onClick={openModal}
           className="relative block aspect-[21/32] w-full"
         >
           <Image
@@ -93,7 +98,7 @@ export function MangaCard({ manga }: MangaCardProps) {
 
       {isOpen ? (
         <div
-          className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-[2px]"
+          className="fixed inset-x-0 bottom-0 top-[72px] z-10 bg-stone-950/70 px-2 pb-3 backdrop-blur-[2px] sm:px-4"
           role="dialog"
           aria-modal="true"
           aria-label={`${manga.title}の詳細`}
@@ -103,7 +108,7 @@ export function MangaCard({ manga }: MangaCardProps) {
             }
           }}
         >
-          <div className="relative grid h-dvh w-dvw overflow-hidden bg-stone-50 md:grid-cols-[minmax(280px,42vw)_1fr]">
+          <div className="relative grid h-full overflow-hidden rounded-2xl bg-stone-50 shadow-2xl md:grid-cols-[minmax(260px,40%)_1fr] 2xl:mx-[5.555556vw]">
             <button
               type="button"
               title="閉じる"
@@ -113,7 +118,7 @@ export function MangaCard({ manga }: MangaCardProps) {
               <X className="size-5" />
             </button>
 
-            <div className="relative h-[42dvh] bg-stone-200 md:h-dvh">
+            <div className="relative h-[38%] bg-stone-200 md:h-full">
               <Image
                 src={series?.representativeImageUrl ?? manga.coverImageUrl}
                 alt={`${series?.title ?? manga.title}の代表画像`}
@@ -121,11 +126,11 @@ export function MangaCard({ manga }: MangaCardProps) {
                 unoptimized
                 priority
                 className="object-cover"
-                sizes="(max-width: 768px) 100vw, 42vw"
+                sizes="(max-width: 768px) 100vw, 40vw"
               />
             </div>
 
-            <div className="h-[58dvh] overflow-y-auto px-5 py-6 sm:px-7 md:h-dvh md:px-9 md:py-8">
+            <div className="h-[62%] overflow-y-auto px-5 py-6 sm:px-7 md:h-full md:px-9 md:py-8">
               {isLoading ? (
                 <div className="flex min-h-80 items-center justify-center">
                   <LoaderCircle className="size-7 animate-spin text-stone-500" />

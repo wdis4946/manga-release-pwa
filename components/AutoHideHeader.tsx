@@ -42,9 +42,17 @@ export function AutoHideHeader({ tags, authors }: AutoHideHeaderProps) {
       lastScrollYRef.current = currentScrollY;
     }
 
-    window.addEventListener("scroll", handleScroll, { passive: true });
+    function handleModalOpen() {
+      setIsHidden(false);
+    }
 
-    return () => window.removeEventListener("scroll", handleScroll);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    window.addEventListener("public-gallery-modal-open", handleModalOpen);
+
+    return () => {
+      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener("public-gallery-modal-open", handleModalOpen);
+    };
   }, [isAdminPage]);
 
   if (isAdminPage) {
