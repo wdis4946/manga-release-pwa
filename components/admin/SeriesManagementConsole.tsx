@@ -1821,6 +1821,13 @@ export function SeriesManagementConsole({
               <UserRound className="size-4" />
               作者管理
             </Link>
+            <Link
+              href="/admin/display-groups"
+              className="flex h-9 items-center gap-2 rounded-md border border-stone-300 bg-white px-3 text-sm font-semibold text-stone-700 hover:bg-stone-100"
+            >
+              <BookOpen className="size-4" />
+              表示グループ管理
+            </Link>
             <button
               type="button"
               title="再読み込み"
