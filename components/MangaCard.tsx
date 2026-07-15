@@ -130,7 +130,7 @@ export function MangaCard({ manga }: MangaCardProps) {
               />
             </div>
 
-            <div className="h-[62%] overflow-y-auto px-5 py-6 sm:px-7 md:h-full md:px-9 md:py-8">
+            <div className="h-[62%] overflow-y-auto bg-transparent px-5 py-6 [scrollbar-color:rgba(255,255,255,0.72)_transparent] [scrollbar-width:thin] sm:px-7 md:h-full md:px-9 md:py-8 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/60 [&::-webkit-scrollbar-track]:bg-transparent">
               {isLoading ? (
                 <div className="flex min-h-80 items-center justify-center">
                   <LoaderCircle className="size-7 animate-spin text-stone-500" />
@@ -193,7 +193,7 @@ function SeriesModalBody({ series }: { series: PublicSeriesDetail }) {
             {series.categories.map((category) => (
               <div
                 key={category.categoryNumber}
-                className="rounded-xl border border-white/15 bg-white/5 p-3"
+                className="rounded-xl border border-white/15 bg-transparent p-3"
               >
                 <div className="flex items-center justify-between gap-3">
                   <h3 className="text-sm font-semibold text-white/90">
@@ -249,7 +249,7 @@ function SeriesModalBody({ series }: { series: PublicSeriesDetail }) {
             ))}
           </div>
         ) : (
-          <p className="rounded-xl border border-white/15 bg-white/5 px-4 py-6 text-sm text-white/55">
+          <p className="rounded-xl border border-white/15 bg-transparent px-4 py-6 text-sm text-white/55">
             巻情報はまだ登録されていません。
           </p>
         )}
