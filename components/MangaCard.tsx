@@ -98,7 +98,7 @@ export function MangaCard({ manga }: MangaCardProps) {
 
       {isOpen ? (
         <div
-          className="fixed inset-x-0 bottom-0 top-[72px] z-10 bg-stone-950/90 px-2 pb-3 backdrop-blur-[2px] sm:px-4"
+          className="fixed inset-x-0 bottom-0 top-[72px] z-10 bg-stone-950/90 backdrop-blur-[2px]"
           role="dialog"
           aria-modal="true"
           aria-label={`${manga.title}の詳細`}
@@ -108,12 +108,12 @@ export function MangaCard({ manga }: MangaCardProps) {
             }
           }}
         >
-          <div className="relative h-full overflow-hidden rounded-2xl bg-transparent 2xl:mx-[5.555556vw]">
+          <div className="relative h-full overflow-hidden bg-transparent">
             <button
               type="button"
               title="閉じる"
               onClick={() => setIsOpen(false)}
-              className="fixed right-2 top-[84px] z-10 flex size-10 items-center justify-center rounded-full bg-black/55 text-white ring-1 ring-white/20 hover:bg-black/70 sm:right-4"
+              className="absolute right-3 top-3 z-10 flex size-10 items-center justify-center rounded-full bg-black/55 text-white ring-1 ring-white/20 hover:bg-black/70"
             >
               <X className="size-5" />
             </button>
@@ -147,7 +147,7 @@ function SeriesModalBody({
   coverImageUrl: string;
 }) {
   return (
-    <div className="h-full min-h-0 py-6 pl-5 pr-1 sm:pl-7 sm:pr-1 md:py-8 md:pl-9 md:pr-1">
+    <div className="h-full min-h-0 px-2 py-6 sm:px-4 md:py-8 2xl:mx-[5.555556vw]">
       <section className="grid h-full min-h-0 grid-rows-[minmax(150px,38%)_minmax(0,1fr)] gap-5 md:grid-cols-[minmax(220px,34%)_minmax(0,1fr)] md:grid-rows-none">
         <div className="relative min-h-0 bg-transparent">
           <Image
