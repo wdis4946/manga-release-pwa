@@ -152,8 +152,8 @@ function SeriesModalBody({
   const primaryLabel = labels[0] ?? "MANGA";
 
   return (
-    <div className="h-full overflow-y-auto [scrollbar-color:rgba(255,255,255,0.62)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/60 [&::-webkit-scrollbar-track]:bg-transparent">
-      <section className="grid min-h-full md:grid-cols-[minmax(290px,0.85fr)_1.15fr]">
+    <div className="h-full overflow-hidden">
+      <section className="grid h-full md:grid-cols-[minmax(290px,0.85fr)_1.15fr]">
         <div className="relative h-[48dvh] max-h-[420px] min-h-[260px] bg-[#0d111b] md:h-auto md:max-h-none md:min-h-0">
           <Image
             src={coverImageUrl}
@@ -166,7 +166,7 @@ function SeriesModalBody({
           />
         </div>
 
-        <div className="bg-gradient-to-b from-white/[0.03] to-white/[0.01] p-6 md:p-9">
+        <div className="overflow-y-auto bg-gradient-to-b from-white/[0.03] to-white/[0.01] p-6 [scrollbar-color:rgba(255,255,255,0.62)_transparent] [scrollbar-width:thin] md:p-9 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/60 [&::-webkit-scrollbar-track]:bg-transparent">
           <span className="inline-block rounded-full border border-white/6 bg-white/8 px-2.5 py-1 text-[11px] font-medium text-[#cad3f6]">
             {primaryLabel}
           </span>
