@@ -100,7 +100,7 @@ export function MangaCard({ manga }: MangaCardProps) {
 
       {isOpen ? (
         <div
-          className="fixed inset-0 z-30 flex items-center justify-center bg-[rgba(5,7,12,0.62)] p-3 backdrop-blur-[8px]"
+          className="fixed inset-0 z-30 flex items-center justify-center bg-[rgba(5,7,12,0.62)] backdrop-blur-[8px]"
           role="dialog"
           aria-modal="true"
           aria-label={`${manga.title}の詳細`}
@@ -110,7 +110,7 @@ export function MangaCard({ manga }: MangaCardProps) {
             }
           }}
         >
-          <div className="relative max-h-[calc(100dvh-32px)] w-[calc(100%_-_24px)] max-w-[900px] overflow-hidden rounded-[24px] border border-white/8 bg-gradient-to-b from-[#131827] to-[#0f1420] text-[#edf2ff] shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
+          <div className="relative max-h-[calc(100dvh-32px)] w-[min(900px,calc(100%_-_24px))] overflow-hidden rounded-[24px] border border-white/8 bg-gradient-to-b from-[#131827] to-[#0f1420] text-[#edf2ff] shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
             <button
               type="button"
               title="閉じる"
