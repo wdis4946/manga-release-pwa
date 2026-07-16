@@ -148,20 +148,20 @@ function SeriesModalBody({
 }) {
   return (
     <div className="h-full min-h-0 px-2 py-6 sm:px-4 md:py-8 2xl:mx-[8.333334vw]">
-      <section className="grid h-full min-h-0 grid-rows-[minmax(120px,30%)_minmax(0,1fr)] gap-5 md:grid-cols-[minmax(180px,26%)_minmax(0,1fr)] md:grid-rows-none">
-        <div className="relative min-h-0 bg-transparent">
+      <section className="grid h-full min-h-0 grid-rows-[minmax(120px,30%)_minmax(0,1fr)] gap-8 md:grid-cols-[minmax(180px,26%)_minmax(0,1fr)] md:grid-rows-none md:gap-12 lg:gap-16">
+        <div className="relative min-h-0 bg-transparent md:aspect-[21/32] md:self-start">
           <Image
             src={coverImageUrl}
             alt={`${series.title}の代表画像`}
             fill
             unoptimized
             priority
-            className="object-contain"
+            className="object-contain object-top"
             sizes="(max-width: 768px) 100vw, 26vw"
           />
         </div>
 
-        <div className="min-h-0 overflow-y-auto bg-transparent pr-5 [scrollbar-color:rgba(255,255,255,0.72)_transparent] [scrollbar-width:thin] sm:pr-7 md:pr-9 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/70 [&::-webkit-scrollbar-track]:bg-transparent">
+        <div className="min-h-0 overflow-y-auto bg-transparent pr-8 [scrollbar-color:rgba(255,255,255,0.72)_transparent] [scrollbar-width:thin] sm:pr-10 md:pr-14 lg:pr-16 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/70 [&::-webkit-scrollbar-track]:bg-transparent">
           <h1 className="pr-12 text-2xl font-bold leading-9 tracking-normal text-white sm:text-3xl">
             {series.title}
           </h1>
