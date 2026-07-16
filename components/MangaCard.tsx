@@ -100,7 +100,7 @@ export function MangaCard({ manga }: MangaCardProps) {
 
       {isOpen ? (
         <div
-          className="fixed inset-x-0 bottom-0 top-[72px] z-10 bg-stone-950/90 backdrop-blur-[2px]"
+          className="fixed inset-0 z-30 flex items-center justify-center bg-[rgba(5,7,12,0.62)] p-3 backdrop-blur-[8px]"
           role="dialog"
           aria-modal="true"
           aria-label={`${manga.title}の詳細`}
@@ -110,22 +110,22 @@ export function MangaCard({ manga }: MangaCardProps) {
             }
           }}
         >
-          <div className="relative h-full overflow-hidden bg-transparent">
+          <div className="relative max-h-[calc(100dvh-32px)] w-[calc(100%_-_24px)] max-w-[900px] overflow-hidden rounded-[24px] border border-white/8 bg-gradient-to-b from-[#131827] to-[#0f1420] text-[#edf2ff] shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
             <button
               type="button"
               title="閉じる"
               onClick={() => setIsOpen(false)}
-              className="absolute right-10 top-3 z-10 flex size-10 items-center justify-center rounded-full bg-black/55 text-white ring-1 ring-white/20 hover:bg-black/70 md:right-12"
+              className="absolute right-3 top-3 z-10 flex size-[42px] items-center justify-center rounded-full border border-white/8 bg-[rgba(12,16,25,0.84)] text-[#eaf0ff] shadow-[0_10px_24px_rgba(0,0,0,0.35)] transition hover:bg-white/10"
             >
               <X className="size-5" />
             </button>
 
             {isLoading ? (
-              <div className="flex h-full items-center justify-center">
+              <div className="flex min-h-[360px] items-center justify-center">
                 <LoaderCircle className="size-7 animate-spin text-white/70" />
               </div>
             ) : error ? (
-              <p className="flex h-full items-center justify-center px-6 text-center text-sm text-white/60">
+              <p className="flex min-h-[360px] items-center justify-center px-6 text-center text-sm text-white/60">
                 {error}
               </p>
             ) : series ? (
@@ -148,36 +148,42 @@ function SeriesModalBody({
   series: PublicSeriesDetail;
   coverImageUrl: string;
 }) {
+  const labels = [...series.publishers, ...series.genres];
+  const primaryLabel = labels[0] ?? "MANGA";
+
   return (
-    <div className="h-full min-h-0 px-2 py-6 sm:px-4 md:py-8 2xl:mx-[8.333334vw]">
-      <section className="grid h-full min-h-0 grid-rows-[minmax(120px,30%)_minmax(0,1fr)] gap-8 md:grid-cols-[minmax(180px,26%)_minmax(0,1fr)] md:grid-rows-none md:gap-12 lg:gap-16">
-        <div className="relative min-h-0 bg-transparent md:aspect-[21/32] md:self-start">
+    <div className="max-h-[calc(100dvh-32px)] overflow-y-auto [scrollbar-color:rgba(255,255,255,0.62)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/60 [&::-webkit-scrollbar-track]:bg-transparent">
+      <section className="grid md:grid-cols-[minmax(290px,0.85fr)_1.15fr]">
+        <div className="relative h-[48dvh] max-h-[420px] min-h-[260px] bg-[#0d111b] md:h-auto md:max-h-none md:min-h-[560px]">
           <Image
             src={coverImageUrl}
             alt={`${series.title}の代表画像`}
             fill
             unoptimized
             priority
-            className="object-contain object-top"
-            sizes="(max-width: 768px) 100vw, 26vw"
+            className="object-cover"
+            sizes="(max-width: 768px) calc(100vw - 24px), 390px"
           />
         </div>
 
-        <div className="min-h-0 overflow-y-auto bg-transparent pr-8 [scrollbar-color:rgba(255,255,255,0.72)_transparent] [scrollbar-width:thin] sm:pr-10 md:pr-14 lg:pr-16 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/70 [&::-webkit-scrollbar-track]:bg-transparent">
-          <h1 className="pr-12 text-2xl font-bold leading-9 tracking-normal text-white sm:text-3xl">
+        <div className="bg-gradient-to-b from-white/[0.03] to-white/[0.01] p-6 md:p-9">
+          <span className="inline-block rounded-full border border-white/6 bg-white/8 px-2.5 py-1 text-[11px] font-medium text-[#cad3f6]">
+            {primaryLabel}
+          </span>
+          <h1 className="mt-3 pr-12 text-[28px] font-bold leading-[1.3] tracking-normal text-[#f5f7ff] sm:text-[34px]">
             {series.title}
           </h1>
           {series.authors.length > 0 ? (
-            <p className="mt-2 text-sm font-medium text-white/75">
+            <p className="mt-3 text-sm font-medium text-[#a8b2d6]">
               {series.authors.join("、")}
             </p>
           ) : null}
           {series.publishers.length > 0 || series.genres.length > 0 ? (
-            <div className="mt-3 flex flex-wrap gap-2">
-              {[...series.publishers, ...series.genres].map((label) => (
+            <div className="mt-4 flex flex-wrap gap-2">
+              {labels.map((label) => (
                 <span
                   key={label}
-                  className="rounded-full bg-white/10 px-2.5 py-1 text-xs font-medium text-white/75 ring-1 ring-white/15"
+                  className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-xs font-medium text-[#eff3ff]"
                 >
                   {label}
                 </span>
@@ -186,16 +192,16 @@ function SeriesModalBody({
           ) : null}
 
           {series.description ? (
-            <p className="mt-5 whitespace-pre-line text-base leading-8 text-white/85">
+            <p className="mt-6 whitespace-pre-line text-sm leading-[1.9] text-[#d0d7ee]">
               {series.description}
             </p>
           ) : (
-            <p className="mt-5 text-base leading-8 text-white/55">
+            <p className="mt-6 text-sm leading-[1.9] text-[#d0d7ee]/70">
               あらすじはまだ登録されていません。
             </p>
           )}
 
-          <div className="mt-7">
+          <div className="mt-7 border-t border-white/8 pt-6">
             <SeriesCategoryVolumes series={series} />
           </div>
         </div>
