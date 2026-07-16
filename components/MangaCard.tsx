@@ -78,21 +78,23 @@ export function MangaCard({ manga }: MangaCardProps) {
 
   return (
     <>
-      <article className="overflow-hidden rounded-xl bg-stone-100 transition duration-200 hover:brightness-95">
+      <article className="min-w-0">
         <button
           type="button"
           aria-label={`${manga.title}の詳細を見る`}
           onClick={openModal}
-          className="relative block aspect-[21/32] w-full"
+          className="group/card relative block aspect-[21/32] w-full overflow-hidden rounded-2xl border border-white/5 bg-[#131827] shadow-[0_18px_38px_rgba(0,0,0,0.45)] transition duration-200 hover:-translate-y-1 hover:scale-[1.01] hover:shadow-[0_22px_48px_rgba(0,0,0,0.55)] hover:saturate-[1.08]"
         >
           <Image
             src={manga.coverImageUrl}
             alt={`${manga.title}の代表画像`}
             fill
             unoptimized
-            className="object-cover"
+            className="object-cover transition duration-200 group-hover/card:scale-[1.015]"
             sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, (max-width: 1536px) 25vw, 16vw"
           />
+          <span className="pointer-events-none absolute inset-x-[-20%] top-[-10%] h-[42%] bg-gradient-to-b from-white/15 to-transparent" />
+          <span className="pointer-events-none absolute inset-x-0 bottom-0 h-[36%] bg-gradient-to-b from-transparent to-black/25" />
         </button>
       </article>
 

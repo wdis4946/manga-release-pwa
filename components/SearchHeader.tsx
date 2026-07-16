@@ -52,12 +52,12 @@ export function SearchHeader({ tags, authors }: SearchHeaderProps) {
           onFocus={() => setIsFocused(true)}
           onBlur={() => window.setTimeout(() => setIsFocused(false), 120)}
           placeholder="漫画を検索"
-          className="h-12 w-full rounded-full border border-stone-200 bg-stone-100 px-5 text-base font-medium text-stone-950 outline-none transition placeholder:text-stone-500 focus:border-stone-300 focus:bg-white focus:ring-4 focus:ring-stone-200"
+          className="h-[50px] w-full rounded-full border border-white/10 bg-gradient-to-b from-white/10 to-white/5 px-5 text-base font-medium text-white shadow-[0_14px_40px_rgba(0,0,0,0.24)] outline-none transition placeholder:text-[#93a0ca] focus:border-[#7db5ff]/70 focus:bg-white/10 focus:ring-4 focus:ring-[#7db5ff]/15"
         />
       </form>
 
       {shouldShowSuggestions ? (
-        <div className="absolute left-0 right-0 top-14 z-30 overflow-hidden rounded-md border border-stone-200 bg-white shadow-lg">
+        <div className="absolute left-0 right-0 top-14 z-30 overflow-hidden rounded-2xl border border-white/10 bg-[#111622]/95 shadow-[0_24px_70px_rgba(0,0,0,0.45)] backdrop-blur-xl">
           <SuggestionGroup
             label="タグ"
             paramName="tag"
@@ -88,14 +88,14 @@ function SuggestionGroup({
   }
 
   return (
-    <div className="border-b border-stone-100 last:border-b-0">
-      <p className="px-4 pt-3 text-xs font-bold text-stone-400">{label}</p>
+    <div className="border-b border-white/8 last:border-b-0">
+      <p className="px-4 pt-3 text-xs font-bold text-[#8d98bd]">{label}</p>
       <div className="py-2">
         {suggestions.map((suggestion) => (
           <a
             key={`${paramName}-${suggestion.id}`}
             href={`/?${paramName}=${encodeURIComponent(suggestion.name)}`}
-            className="block px-4 py-2 text-sm font-semibold text-stone-800 transition hover:bg-stone-100"
+            className="block px-4 py-2 text-sm font-semibold text-white/85 transition hover:bg-white/8 hover:text-white"
           >
             {suggestion.name}
           </a>

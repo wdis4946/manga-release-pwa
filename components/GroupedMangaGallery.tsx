@@ -11,7 +11,7 @@ export function GroupedMangaGallery({ groups }: GroupedMangaGalleryProps) {
       {groups.map((group) => (
         <section key={group.id} className="space-y-3">
           <div className="px-1 2xl:mx-[5.555556vw]">
-            <h2 className="text-sm font-normal leading-6 text-stone-600">
+            <h2 className="text-sm font-normal leading-6 text-[#a8b2d6]">
               {group.name}
             </h2>
           </div>
