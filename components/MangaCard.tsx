@@ -110,7 +110,7 @@ export function MangaCard({ manga }: MangaCardProps) {
             }
           }}
         >
-          <div className="relative max-h-[calc(100dvh-32px)] w-[min(900px,calc(100%_-_24px))] overflow-hidden rounded-[24px] border border-white/8 bg-gradient-to-b from-[#131827] to-[#0f1420] text-[#edf2ff] shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
+          <div className="relative aspect-[1.6/1] max-h-[calc(100dvh-32px)] w-[min(900px,calc(100%_-_24px),calc((100dvh_-_32px)*1.6))] overflow-hidden rounded-[24px] border border-white/8 bg-gradient-to-b from-[#131827] to-[#0f1420] text-[#edf2ff] shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
             <button
               type="button"
               title="閉じる"
@@ -152,9 +152,9 @@ function SeriesModalBody({
   const primaryLabel = labels[0] ?? "MANGA";
 
   return (
-    <div className="max-h-[calc(100dvh-32px)] overflow-y-auto [scrollbar-color:rgba(255,255,255,0.62)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/60 [&::-webkit-scrollbar-track]:bg-transparent">
-      <section className="grid md:grid-cols-[minmax(290px,0.85fr)_1.15fr]">
-        <div className="relative h-[48dvh] max-h-[420px] min-h-[260px] bg-[#0d111b] md:h-auto md:max-h-none md:min-h-[560px]">
+    <div className="h-full overflow-y-auto [scrollbar-color:rgba(255,255,255,0.62)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/60 [&::-webkit-scrollbar-track]:bg-transparent">
+      <section className="grid min-h-full md:grid-cols-[minmax(290px,0.85fr)_1.15fr]">
+        <div className="relative h-[48dvh] max-h-[420px] min-h-[260px] bg-[#0d111b] md:h-auto md:max-h-none md:min-h-0">
           <Image
             src={coverImageUrl}
             alt={`${series.title}の代表画像`}
