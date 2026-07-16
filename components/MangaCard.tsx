@@ -161,7 +161,7 @@ function SeriesModalBody({
           />
         </div>
 
-        <div className="min-h-0 overflow-y-auto bg-transparent pr-1 [scrollbar-color:rgba(255,255,255,0.72)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/70 [&::-webkit-scrollbar-track]:bg-transparent">
+        <div className="min-h-0 overflow-y-auto bg-transparent pr-5 [scrollbar-color:rgba(255,255,255,0.72)_transparent] [scrollbar-width:thin] sm:pr-7 md:pr-9 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/70 [&::-webkit-scrollbar-track]:bg-transparent">
           <h1 className="pr-12 text-2xl font-bold leading-9 tracking-normal text-white sm:text-3xl">
             {series.title}
           </h1>
