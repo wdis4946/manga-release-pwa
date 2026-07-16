@@ -147,8 +147,8 @@ function SeriesModalBody({
   coverImageUrl: string;
 }) {
   return (
-    <div className="grid h-full min-h-0 grid-rows-[minmax(0,52%)_minmax(0,1fr)] gap-5 py-6 pl-5 pr-1 sm:pl-7 sm:pr-1 md:py-8 md:pl-9 md:pr-1">
-      <section className="grid min-h-0 grid-rows-[minmax(140px,45%)_minmax(0,1fr)] gap-5 md:grid-cols-[minmax(220px,34%)_minmax(0,1fr)] md:grid-rows-none">
+    <div className="h-full min-h-0 py-6 pl-5 pr-1 sm:pl-7 sm:pr-1 md:py-8 md:pl-9 md:pr-1">
+      <section className="grid h-full min-h-0 grid-rows-[minmax(150px,38%)_minmax(0,1fr)] gap-5 md:grid-cols-[minmax(220px,34%)_minmax(0,1fr)] md:grid-rows-none">
         <div className="relative min-h-0 bg-transparent">
           <Image
             src={coverImageUrl}
@@ -192,11 +192,11 @@ function SeriesModalBody({
               あらすじはまだ登録されていません。
             </p>
           )}
-        </div>
-      </section>
 
-      <section className="min-h-0 overflow-y-auto bg-transparent pr-1 [scrollbar-color:rgba(255,255,255,0.72)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/70 [&::-webkit-scrollbar-track]:bg-transparent">
-        <SeriesCategoryVolumes series={series} />
+          <div className="mt-7">
+            <SeriesCategoryVolumes series={series} />
+          </div>
+        </div>
       </section>
     </div>
   );
