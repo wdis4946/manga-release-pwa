@@ -148,8 +148,7 @@ function SeriesModalBody({
   series: PublicSeriesDetail;
   coverImageUrl: string;
 }) {
-  const labels = [...series.publishers, ...series.genres];
-  const primaryLabel = labels[0] ?? "MANGA";
+  const labels = series.genres;
 
   return (
     <div className="h-full overflow-hidden">
@@ -167,10 +166,7 @@ function SeriesModalBody({
         </div>
 
         <div className="overflow-y-auto bg-gradient-to-b from-white/[0.03] to-white/[0.01] p-6 [scrollbar-color:rgba(255,255,255,0.62)_transparent] [scrollbar-width:thin] md:p-9 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/60 [&::-webkit-scrollbar-track]:bg-transparent">
-          <span className="inline-block rounded-full border border-white/6 bg-white/8 px-2.5 py-1 text-[11px] font-medium text-[#cad3f6]">
-            {primaryLabel}
-          </span>
-          <h1 className="mt-3 pr-12 text-[28px] font-bold leading-[1.3] tracking-normal text-[#f5f7ff] sm:text-[34px]">
+          <h1 className="pr-12 text-[28px] font-bold leading-[1.3] tracking-normal text-[#f5f7ff] sm:text-[34px]">
             {series.title}
           </h1>
           {series.authors.length > 0 ? (
@@ -178,7 +174,7 @@ function SeriesModalBody({
               {series.authors.join("、")}
             </p>
           ) : null}
-          {series.publishers.length > 0 || series.genres.length > 0 ? (
+          {labels.length > 0 ? (
             <div className="mt-4 flex flex-wrap gap-2">
               {labels.map((label) => (
                 <span
