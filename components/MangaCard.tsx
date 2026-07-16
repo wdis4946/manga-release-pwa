@@ -110,7 +110,7 @@ export function MangaCard({ manga }: MangaCardProps) {
             }
           }}
         >
-          <div className="relative aspect-[1.6/1] max-h-[calc(100dvh-32px)] w-[min(1040px,calc(100%_-_24px),calc((100dvh_-_32px)*1.6))] overflow-hidden rounded-[24px] border border-white/8 bg-gradient-to-b from-[#131827] to-[#0f1420] text-[#edf2ff] shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
+          <div className="relative aspect-[1.5/1] max-h-[calc(100dvh-24px)] w-[min(1040px,calc(100%_-_24px),calc((100dvh_-_24px)*1.5))] overflow-hidden rounded-[24px] border border-white/8 bg-gradient-to-b from-[#131827] to-[#0f1420] text-[#edf2ff] shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
             <button
               type="button"
               title="閉じる"
@@ -161,7 +161,7 @@ function SeriesModalBody({
             fill
             unoptimized
             priority
-            className="object-contain"
+            className="object-cover"
             sizes="(max-width: 768px) calc(100vw - 24px), 440px"
           />
         </div>
