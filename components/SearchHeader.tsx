@@ -52,7 +52,7 @@ export function SearchHeader({ tags, authors }: SearchHeaderProps) {
           onFocus={() => setIsFocused(true)}
           onBlur={() => window.setTimeout(() => setIsFocused(false), 120)}
           placeholder="漫画を検索"
-          className="h-[50px] w-full rounded-full border border-white/10 bg-gradient-to-b from-white/10 to-white/5 px-5 text-xl font-medium text-white shadow-[0_14px_40px_rgba(0,0,0,0.24)] outline-none transition placeholder:text-[#93a0ca] focus:border-[#7db5ff]/70 focus:bg-white/10 focus:ring-4 focus:ring-[#7db5ff]/15"
+          className="h-[50px] w-full rounded-full border border-white/10 bg-gradient-to-b from-white/10 to-white/5 px-5 text-base font-medium text-white shadow-[0_14px_40px_rgba(0,0,0,0.24)] outline-none transition placeholder:text-[#93a0ca] focus:border-[#7db5ff]/70 focus:bg-white/10 focus:ring-4 focus:ring-[#7db5ff]/15"
         />
       </form>
 
@@ -89,13 +89,13 @@ function SuggestionGroup({
 
   return (
     <div className="border-b border-white/8 last:border-b-0">
-      <p className="px-4 pt-3 text-xl font-bold text-[#8d98bd]">{label}</p>
+      <p className="px-4 pt-3 text-base font-bold text-[#8d98bd]">{label}</p>
       <div className="py-2">
         {suggestions.map((suggestion) => (
           <a
             key={`${paramName}-${suggestion.id}`}
             href={`/?${paramName}=${encodeURIComponent(suggestion.name)}`}
-            className="block px-4 py-2 text-xl font-semibold text-white/85 transition hover:bg-white/8 hover:text-white"
+            className="block px-4 py-2 text-base font-semibold text-white/85 transition hover:bg-white/8 hover:text-white"
           >
             {suggestion.name}
           </a>

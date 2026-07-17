@@ -8,7 +8,7 @@ type MangaGridProps = {
 export function MangaGrid({ manga }: MangaGridProps) {
   if (manga.length === 0) {
     return (
-      <div className="px-4 py-12 text-center text-xl font-medium text-[#8d98bd]">
+      <div className="px-4 py-12 text-center text-base font-medium text-[#8d98bd]">
         表示できる漫画がありません。
       </div>
     );

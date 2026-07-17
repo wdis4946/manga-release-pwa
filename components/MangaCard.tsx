@@ -117,7 +117,7 @@ export function MangaCard({ manga }: MangaCardProps) {
             }
           }}
         >
-          <div className="relative aspect-[1.5/1] max-h-[calc(100dvh-24px)] w-[min(1040px,calc(100%_-_24px),calc((100dvh_-_24px)*1.5))] overflow-hidden rounded-[24px] border border-white/8 bg-gradient-to-b from-[#131827] to-[#0f1420] text-[#edf2ff] shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
+          <div className="relative aspect-[1.5/1] max-h-[calc(100dvh-24px)] w-[min(1120px,calc(100%_-_24px),calc((100dvh_-_24px)*1.5))] overflow-hidden rounded-[24px] border border-white/8 bg-gradient-to-b from-[#131827] to-[#0f1420] text-[#edf2ff] shadow-[0_30px_80px_rgba(0,0,0,0.62)]">
             <button
               type="button"
               title="閉じる"
@@ -132,7 +132,7 @@ export function MangaCard({ manga }: MangaCardProps) {
                 <LoaderCircle className="size-7 animate-spin text-white/70" />
               </div>
             ) : error ? (
-              <p className="flex min-h-[360px] items-center justify-center px-6 text-center text-xl text-white/60">
+              <p className="flex min-h-[360px] items-center justify-center px-6 text-center text-base text-white/60">
                 {error}
               </p>
             ) : series ? (
@@ -177,7 +177,7 @@ function SeriesModalBody({
             {series.title}
           </h1>
           {series.authors.length > 0 ? (
-            <p className="mt-3 text-xl font-medium text-[#a8b2d6]">
+            <p className="mt-3 text-base font-medium text-[#a8b2d6]">
               {series.authors.join("、")}
             </p>
           ) : null}
@@ -186,7 +186,7 @@ function SeriesModalBody({
               {labels.map((label) => (
                 <span
                   key={label}
-                  className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-xl font-medium text-[#eff3ff]"
+                  className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-[#eff3ff]"
                 >
                   {label}
                 </span>
@@ -199,7 +199,7 @@ function SeriesModalBody({
               {series.description}
             </p>
           ) : (
-            <p className="mt-6 text-xl leading-[1.9] text-[#d0d7ee]/70">
+            <p className="mt-6 text-base leading-[1.9] text-[#d0d7ee]/70">
               あらすじはまだ登録されていません。
             </p>
           )}
@@ -216,7 +216,7 @@ function SeriesModalBody({
 function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
   if (series.categories.length === 0) {
     return (
-      <p className="bg-transparent px-4 py-6 text-xl text-white/55">
+      <p className="bg-transparent px-4 py-6 text-base text-white/55">
         巻情報はまだ登録されていません。
       </p>
     );
@@ -227,19 +227,19 @@ function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
       {series.categories.map((category) => (
         <div key={category.categoryNumber} className="bg-transparent">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-xl font-semibold text-white/90">
+            <h3 className="text-base font-semibold text-white/90">
               {category.categoryName}
             </h3>
-            <span className="text-xl text-white/45">{category.itemCount}冊</span>
+            <span className="text-base text-white/45">{category.itemCount}冊</span>
           </div>
           {category.volumes.length > 0 ? (
             <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
               {getFeaturedVolumes(category.volumes).map((volume) => (
                 <div
                   key={`${category.categoryNumber}:${volume.featuredLabel}:${volume.isbn}`}
-                  className="grid min-w-0 gap-3"
+                  className="grid min-w-0 grid-cols-[80px_minmax(0,1fr)] items-start gap-3"
                 >
-                  <div className="relative aspect-[2/3] overflow-hidden rounded-lg bg-white/10">
+                  <div className="relative aspect-[2/3] w-20 overflow-hidden rounded-lg bg-white/10">
                     {volume.coverImageUrl ? (
                       <Image
                         src={volume.coverImageUrl}
@@ -247,27 +247,24 @@ function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
                         fill
                         unoptimized
                         className="object-contain transition group-hover:scale-[1.03]"
-                        sizes="(max-width: 640px) 30vw, (max-width: 1024px) 18vw, 120px"
+                        sizes="80px"
                       />
                     ) : (
-                      <div className="flex size-full items-center justify-center px-2 text-center text-xl text-white/45">
+                      <div className="flex size-full items-center justify-center px-2 text-center text-base text-white/45">
                         no image
                       </div>
                     )}
                   </div>
                   <div>
-                    <p className="text-xl font-semibold text-white/80">
+                    <p className="text-base font-semibold text-white/80">
                       {volume.featuredLabel}
-                    </p>
-                    <p className="line-clamp-2 text-xl leading-7 text-white/55">
-                      {volume.title}
                     </p>
                     <div className="mt-3 flex flex-wrap gap-2">
                       <a
                         href={volume.itemUrl ?? getRakutenSearchUrl(volume.isbn)}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-xl font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+                        className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
                       >
                         楽天
                       </a>
@@ -275,7 +272,7 @@ function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
                         href={getAmazonSearchUrl(volume.isbn)}
                         target="_blank"
                         rel="noreferrer"
-                        className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-xl font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+                        className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
                       >
                         Amazon
                       </a>
@@ -285,7 +282,7 @@ function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
               ))}
             </div>
           ) : (
-            <p className="mt-3 text-xl text-white/45">
+            <p className="mt-3 text-base text-white/45">
               表示できる巻情報がありません。
             </p>
           )}
