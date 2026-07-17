@@ -156,6 +156,7 @@ function SeriesModalBody({
   coverImageUrl: string;
 }) {
   const labels = series.genres;
+  const categoryNames = series.categories.map((category) => category.categoryName);
 
   return (
     <div className="h-full overflow-hidden">
@@ -172,7 +173,19 @@ function SeriesModalBody({
           />
         </div>
 
-        <div className="overflow-y-auto bg-gradient-to-b from-white/[0.03] to-white/[0.01] p-6 [scrollbar-color:rgba(255,255,255,0.62)_transparent] [scrollbar-width:thin] md:p-9 [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/60 [&::-webkit-scrollbar-track]:bg-transparent">
+        <div className="flex h-full flex-col overflow-hidden bg-gradient-to-b from-white/[0.03] to-white/[0.01] p-6 md:p-9">
+          {categoryNames.length > 0 ? (
+            <div className="mb-3 flex flex-wrap gap-2">
+              {categoryNames.map((categoryName) => (
+                <span
+                  key={categoryName}
+                  className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-[#cad3f6]"
+                >
+                  {categoryName}
+                </span>
+              ))}
+            </div>
+          ) : null}
           <h1 className="pr-12 text-[28px] font-bold leading-[1.3] tracking-normal text-[#f5f7ff] sm:text-[34px]">
             {series.title}
           </h1>
@@ -195,7 +208,7 @@ function SeriesModalBody({
           ) : null}
 
           {series.description ? (
-            <p className="mt-6 whitespace-pre-line text-xl leading-[1.9] text-[#d0d7ee]">
+            <p className="mt-6 line-clamp-6 text-xl leading-[1.9] text-[#d0d7ee]">
               {series.description}
             </p>
           ) : (
@@ -204,7 +217,7 @@ function SeriesModalBody({
             </p>
           )}
 
-          <div className="mt-7 border-t border-white/8 pt-6">
+          <div className="mt-7 min-h-0 overflow-hidden border-t border-white/8 pt-6">
             <SeriesCategoryVolumes series={series} />
           </div>
         </div>
@@ -226,14 +239,8 @@ function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
     <div className="space-y-4">
       {series.categories.map((category) => (
         <div key={category.categoryNumber} className="bg-transparent">
-          <div className="flex items-center justify-between gap-3">
-            <h3 className="text-base font-semibold text-white/90">
-              {category.categoryName}
-            </h3>
-            <span className="text-base text-white/45">{category.itemCount}冊</span>
-          </div>
           {category.volumes.length > 0 ? (
-            <div className="mt-3 grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4">
               {getFeaturedVolumes(category.volumes).map((volume) => (
                 <div
                   key={`${category.categoryNumber}:${volume.featuredLabel}:${volume.isbn}`}
