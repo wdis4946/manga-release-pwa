@@ -48,15 +48,14 @@ type DisplayGroupSeriesRow = {
   sort_order: number;
 };
 
-type SeriesCategoryRow = {
-  category_number: number;
-  category_name: string;
-};
-
 type SeriesItemLinkRow = {
   isbn: string;
   category_number: number;
   display_order: number;
+};
+
+type SeriesItemLinkWithSeriesRow = SeriesItemLinkRow & {
+  series_id: string;
 };
 
 type RakutenMangaItemRow = {
@@ -102,6 +101,7 @@ export type PublicSeriesDetail = {
   genres: string[];
   publishers: string[];
   categories: PublicSeriesCategory[];
+  firstVolume: PublicSeriesVolumePreview | null;
 };
 
 export async function getMangaForList(
@@ -205,6 +205,12 @@ export async function getPublicMangaSeriesGallery(
   const rows = shuffle((data ?? []) as SeriesRow[])
     .filter((row) => !excludedIdSet.has(row.id))
     .slice(0, limit);
+  const selectedSeriesIds = rows.map((row) => row.id);
+  const [authors, genres, firstVolumes] = await Promise.all([
+    fetchAgentNamesBySeriesIds(selectedSeriesIds),
+    fetchGenreNamesBySeriesIds(selectedSeriesIds),
+    fetchFirstVolumePreviewsBySeriesIds(selectedSeriesIds),
+  ]);
   const manga = rows.flatMap((row) => {
     const coverImageUrl = createPublicSeriesCoverUrl(
       supabase,
@@ -215,7 +221,13 @@ export async function getPublicMangaSeriesGallery(
       return [];
     }
 
-    return [toSeriesManga(row, coverImageUrl)];
+    return [
+      toSeriesManga(row, coverImageUrl, {
+        authorName: authors.get(row.id)?.join("、") ?? "",
+        genres: genres.get(row.id) ?? [],
+        firstVolume: firstVolumes.get(row.id) ?? null,
+      }),
+    ];
   });
 
   return { manga, source: "series" };
@@ -279,6 +291,11 @@ export async function getPublicMangaDisplayGroups(): Promise<
     const seriesById = new Map(
       ((series ?? []) as SeriesRow[]).map((row) => [row.id, row]),
     );
+    const [authors, genres, firstVolumes] = await Promise.all([
+      fetchAgentNamesBySeriesIds(seriesIds),
+      fetchGenreNamesBySeriesIds(seriesIds),
+      fetchFirstVolumePreviewsBySeriesIds(seriesIds),
+    ]);
     const linksByGroupId = new Map<string, DisplayGroupSeriesRow[]>();
 
     for (const link of linkRows) {
@@ -299,7 +316,13 @@ export async function getPublicMangaDisplayGroups(): Promise<
           return [];
         }
 
-        return [toSeriesManga(row, coverImageUrl)];
+        return [
+          toSeriesManga(row, coverImageUrl, {
+            authorName: authors.get(row.id)?.join("、") ?? "",
+            genres: genres.get(row.id) ?? [],
+            firstVolume: firstVolumes.get(row.id) ?? null,
+          }),
+        ];
       });
 
       if (manga.length === 0) {
@@ -355,12 +378,10 @@ export async function getPublicSeriesDetail(
     return null;
   }
 
-  const [authors, genres, publishers, categories, links] = await Promise.all([
+  const [authors, genres, firstVolumes] = await Promise.all([
     fetchAgentNamesBySeriesIds([id]),
     fetchGenreNamesBySeriesIds([id]),
-    fetchPublisherNamesBySeriesIds([id]),
-    fetchSeriesCategories(id),
-    fetchSeriesItemLinks(id),
+    fetchFirstVolumePreviewsBySeriesIds([id]),
   ]);
 
   return {
@@ -371,8 +392,9 @@ export async function getPublicSeriesDetail(
     representativeImageUrl,
     authors: authors.get(id) ?? [],
     genres: genres.get(id) ?? [],
-    publishers: publishers.get(id) ?? [],
-    categories: await buildPublicSeriesCategories(categories, links),
+    publishers: [],
+    categories: [],
+    firstVolume: firstVolumes.get(id) ?? null,
   };
 }
 
@@ -635,139 +657,55 @@ async function fetchGenreNamesBySeriesIds(seriesIds: string[]) {
   return namesBySeriesId;
 }
 
-async function fetchPublisherNamesBySeriesIds(seriesIds: string[]) {
+async function fetchFirstVolumePreviewsBySeriesIds(seriesIds: string[]) {
   const supabase = createSupabaseAdminClient();
-  const namesBySeriesId = new Map<string, string[]>();
+  const previewsBySeriesId = new Map<string, PublicSeriesVolumePreview>();
+  const uniqueSeriesIds = [...new Set(seriesIds.filter(Boolean))];
 
-  if (seriesIds.length === 0) {
-    return namesBySeriesId;
+  if (uniqueSeriesIds.length === 0) {
+    return previewsBySeriesId;
   }
 
-  const { data, error } = await supabase
-    .from("series_publishers")
-    .select("series_id, publishers(imprint_name, publisher_name)")
-    .in("series_id", seriesIds);
-
-  if (error) {
-    console.error("[Public manga] Failed to load series publishers.", error);
-    return namesBySeriesId;
-  }
-
-  for (const row of data ?? []) {
-    const publisher = firstRelation<{
-      imprint_name: string | null;
-      publisher_name: string | null;
-    }>(row.publishers);
-    const name = publisher?.imprint_name || publisher?.publisher_name;
-
-    if (!name) {
-      continue;
-    }
-
-    const names = namesBySeriesId.get(row.series_id) ?? [];
-    if (!names.includes(name)) {
-      names.push(name);
-    }
-    namesBySeriesId.set(row.series_id, names);
-  }
-
-  return namesBySeriesId;
-}
-
-async function fetchSeriesCategories(seriesId: string) {
-  const supabase = createSupabaseAdminClient();
-  const { data, error } = await supabase
-    .from("series_categories")
-    .select("category_number, category_name")
-    .eq("series_id", seriesId)
-    .order("category_number", { ascending: true });
-
-  if (error) {
-    console.error("[Public manga] Failed to load series categories.", {
-      seriesId,
-      error,
-    });
-    return [];
-  }
-
-  return (data ?? []) as SeriesCategoryRow[];
-}
-
-async function fetchSeriesItemLinks(seriesId: string) {
-  const supabase = createSupabaseAdminClient();
   const { data, error } = await supabase
     .from("series_items")
-    .select("isbn, category_number, display_order")
-    .eq("series_id", seriesId)
+    .select("series_id, isbn, category_number, display_order")
+    .in("series_id", uniqueSeriesIds)
+    .order("series_id", { ascending: true })
     .order("category_number", { ascending: true })
     .order("display_order", { ascending: true })
     .order("isbn", { ascending: true });
 
   if (error) {
-    console.error("[Public manga] Failed to load series item links.", {
-      seriesId,
+    console.error("[Public manga] Failed to load first series volumes.", {
       error,
     });
-    return [];
+    return previewsBySeriesId;
   }
 
-  return (data ?? []) as SeriesItemLinkRow[];
-}
+  const firstLinksBySeriesId = new Map<string, SeriesItemLinkWithSeriesRow>();
 
-async function buildPublicSeriesCategories(
-  categories: SeriesCategoryRow[],
-  links: SeriesItemLinkRow[],
-): Promise<PublicSeriesCategory[]> {
-  const linksByCategory = new Map<number, SeriesItemLinkRow[]>();
+  for (const row of (data ?? []) as SeriesItemLinkWithSeriesRow[]) {
+    if (!firstLinksBySeriesId.has(row.series_id)) {
+      firstLinksBySeriesId.set(row.series_id, row);
+    }
+  }
+
   const rakutenItemsByIsbn = await fetchRakutenMangaItemRows(
-    links.map((link) => link.isbn),
+    [...firstLinksBySeriesId.values()].map((link) => link.isbn),
   );
 
-  for (const link of links) {
-    const categoryLinks = linksByCategory.get(link.category_number) ?? [];
-    categoryLinks.push(link);
-    linksByCategory.set(link.category_number, categoryLinks);
+  for (const [seriesId, link] of firstLinksBySeriesId) {
+    previewsBySeriesId.set(
+      seriesId,
+      await fetchPublicSeriesVolumePreview(
+        link,
+        0,
+        rakutenItemsByIsbn.get(link.isbn),
+      ),
+    );
   }
 
-  const categoryNumbers = new Set([
-    ...categories.map((category) => category.category_number),
-    ...links.map((link) => link.category_number),
-  ]);
-  const namesByNumber = new Map(
-    categories.map((category) => [
-      category.category_number,
-      category.category_name,
-    ]),
-  );
-
-  const result = await Promise.all(
-    [...categoryNumbers]
-      .sort((left, right) => left - right)
-      .map(async (categoryNumber) => {
-        const categoryLinks = [...(linksByCategory.get(categoryNumber) ?? [])].sort(
-          (left, right) =>
-            left.display_order - right.display_order ||
-            left.isbn.localeCompare(right.isbn),
-        );
-
-        return {
-          categoryNumber,
-          categoryName: namesByNumber.get(categoryNumber) ?? "単行本",
-          itemCount: categoryLinks.length,
-          volumes: await Promise.all(
-            categoryLinks.map((link, index) =>
-              fetchPublicSeriesVolumePreview(
-                link,
-                index,
-                rakutenItemsByIsbn.get(link.isbn),
-              ),
-            ),
-          ),
-        };
-      }),
-  );
-
-  return result;
+  return previewsBySeriesId;
 }
 
 async function fetchRakutenMangaItemRows(
@@ -892,10 +830,12 @@ function toSeriesManga(
     authorName?: string;
     genres?: string[];
     latestVolumeNumber?: number;
+    firstVolume?: PublicSeriesVolumePreview | null;
   } = {},
 ): Manga {
   return {
     id: series.id,
+    isbn: options.firstVolume?.isbn,
     title: series.display_title,
     authorName: options.authorName ?? "",
     description: series.description ?? "",
@@ -903,8 +843,22 @@ function toSeriesManga(
     genres: options.genres ?? [],
     popularityScore: 0,
     latestVolumeNumber: options.latestVolumeNumber ?? 0,
+    amazonUrl: options.firstVolume
+      ? getAmazonSearchUrl(options.firstVolume.isbn)
+      : undefined,
+    rakutenUrl: options.firstVolume
+      ? options.firstVolume.itemUrl ?? getRakutenSearchUrl(options.firstVolume.isbn)
+      : undefined,
     source: "series",
   };
+}
+
+function getAmazonSearchUrl(isbn: string) {
+  return `https://www.amazon.co.jp/s?k=${encodeURIComponent(isbn)}`;
+}
+
+function getRakutenSearchUrl(isbn: string) {
+  return `https://books.rakuten.co.jp/search?sitem=${encodeURIComponent(isbn)}`;
 }
 
 function shuffle<T>(items: T[]) {

@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { LoaderCircle, X } from "lucide-react";
 import type { Manga } from "@/lib/manga/types";
 import type { PublicSeriesDetail } from "@/lib/manga/service";
@@ -14,18 +14,56 @@ type PublicSeriesDetailResponse = {
   series: PublicSeriesDetail;
 };
 
-type PublicSeriesVolume =
-  PublicSeriesDetail["categories"][number]["volumes"][number];
-
 export function MangaCard({ manga }: MangaCardProps) {
   const [isOpen, setIsOpen] = useState(false);
-  const [series, setSeries] = useState<PublicSeriesDetail | null>(null);
+  const [series, setSeries] = useState<PublicSeriesDetail>(() =>
+    createInitialSeriesDetail(manga),
+  );
+  const [hasFetchedDetail, setHasFetchedDetail] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+
+  const loadSeriesDetail = useCallback(
+    async (showLoading: boolean) => {
+      if (hasFetchedDetail || isLoading) {
+        return;
+      }
+
+      if (showLoading) {
+        setIsLoading(true);
+      }
+      setError("");
+
+      try {
+        const response = await fetch(`/api/public/series/${manga.id}`, {
+          cache: "no-store",
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to load series: ${response.status}`);
+        }
+
+        const payload = (await response.json()) as PublicSeriesDetailResponse;
+        setSeries(payload.series);
+        setHasFetchedDetail(true);
+      } catch (loadError) {
+        console.error("[Public manga] Failed to load series modal.", loadError);
+        if (showLoading) {
+          setError("詳細を取得できませんでした。");
+        }
+      } finally {
+        if (showLoading) {
+          setIsLoading(false);
+        }
+      }
+    },
+    [hasFetchedDetail, isLoading, manga.id],
+  );
 
   function openModal() {
     window.dispatchEvent(new Event("public-gallery-modal-open"));
     setIsOpen(true);
+    void loadSeriesDetail(false);
   }
 
   useEffect(() => {
@@ -49,35 +87,18 @@ export function MangaCard({ manga }: MangaCardProps) {
   }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen || series || isLoading) {
+    if (hasFetchedDetail || isOpen) {
       return;
     }
 
-    async function loadSeriesDetail() {
-      setIsLoading(true);
-      setError("");
+    const timeoutId = window.setTimeout(() => {
+      void loadSeriesDetail(false);
+    }, 400 + Math.random() * 1200);
 
-      try {
-        const response = await fetch(`/api/public/series/${manga.id}`, {
-          cache: "no-store",
-        });
-
-        if (!response.ok) {
-          throw new Error(`Failed to load series: ${response.status}`);
-        }
-
-        const payload = (await response.json()) as PublicSeriesDetailResponse;
-        setSeries(payload.series);
-      } catch (loadError) {
-        console.error("[Public manga] Failed to load series modal.", loadError);
-        setError("詳細を取得できませんでした。");
-      } finally {
-        setIsLoading(false);
-      }
-    }
-
-    void loadSeriesDetail();
-  }, [isLoading, isOpen, manga.id, series]);
+    return () => {
+      window.clearTimeout(timeoutId);
+    };
+  }, [hasFetchedDetail, isOpen, loadSeriesDetail]);
 
   return (
     <>
@@ -131,12 +152,12 @@ export function MangaCard({ manga }: MangaCardProps) {
               <p className="flex min-h-[360px] items-center justify-center px-6 text-center text-base text-white/60">
                 {error}
               </p>
-            ) : series ? (
+            ) : (
               <SeriesModalBody
                 series={series}
                 coverImageUrl={series.representativeImageUrl ?? manga.coverImageUrl}
               />
-            ) : null}
+            )}
           </div>
         </div>
       ) : null}
@@ -152,7 +173,7 @@ function SeriesModalBody({
   coverImageUrl: string;
 }) {
   const labels = series.genres;
-  const firstVolume = getFirstVolume(series.categories);
+  const firstVolume = series.firstVolume;
 
   return (
     <div className="h-full overflow-hidden">
@@ -227,29 +248,29 @@ function SeriesModalBody({
   );
 }
 
-function getFirstVolume(
-  categories: PublicSeriesDetail["categories"],
-): PublicSeriesVolume | null {
-  const firstVolume = categories
-    .flatMap((category) =>
-      category.volumes.map((volume) => ({
-        categoryNumber: category.categoryNumber,
-        volume,
-      })),
-    )
-    .sort((left, right) => {
-      if (left.categoryNumber !== right.categoryNumber) {
-        return left.categoryNumber - right.categoryNumber;
-      }
-
-      if (left.volume.displayOrder !== right.volume.displayOrder) {
-        return left.volume.displayOrder - right.volume.displayOrder;
-      }
-
-      return left.volume.isbn.localeCompare(right.volume.isbn);
-    })[0]?.volume;
-
-  return firstVolume ?? null;
+function createInitialSeriesDetail(manga: Manga): PublicSeriesDetail {
+  return {
+    id: manga.id,
+    title: manga.title,
+    searchTitle: manga.title,
+    description: manga.description,
+    representativeImageUrl: manga.coverImageUrl,
+    authors: manga.authorName ? [manga.authorName] : [],
+    genres: manga.genres,
+    publishers: [],
+    categories: [],
+    firstVolume: manga.isbn
+      ? {
+          isbn: manga.isbn,
+          label: "1巻",
+          displayOrder: 0,
+          title: manga.title,
+          coverImageUrl: null,
+          itemUrl: manga.rakutenUrl ?? null,
+          salesDate: null,
+        }
+      : null,
+  };
 }
 
 function getAmazonSearchUrl(isbn: string) {
