@@ -233,13 +233,13 @@ function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
             <span className="text-base text-white/45">{category.itemCount}冊</span>
           </div>
           {category.volumes.length > 0 ? (
-            <div className="mt-3 grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="mt-3 grid grid-cols-2 gap-4">
               {getFeaturedVolumes(category.volumes).map((volume) => (
                 <div
                   key={`${category.categoryNumber}:${volume.featuredLabel}:${volume.isbn}`}
-                  className="grid min-w-0 grid-cols-[80px_minmax(0,1fr)] items-start gap-3"
+                  className="grid min-w-0 gap-2"
                 >
-                  <div className="relative aspect-[2/3] w-20 overflow-hidden rounded-lg bg-white/10">
+                  <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-white/10">
                     {volume.coverImageUrl ? (
                       <Image
                         src={volume.coverImageUrl}
@@ -247,7 +247,7 @@ function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
                         fill
                         unoptimized
                         className="object-contain transition group-hover:scale-[1.03]"
-                        sizes="80px"
+                        sizes="(max-width: 768px) 50vw, 220px"
                       />
                     ) : (
                       <div className="flex size-full items-center justify-center px-2 text-center text-base text-white/45">
@@ -255,28 +255,26 @@ function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
                       </div>
                     )}
                   </div>
-                  <div>
-                    <p className="text-base font-semibold text-white/80">
-                      {volume.featuredLabel}
-                    </p>
-                    <div className="mt-3 flex flex-wrap gap-2">
-                      <a
-                        href={volume.itemUrl ?? getRakutenSearchUrl(volume.isbn)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
-                      >
-                        楽天
-                      </a>
-                      <a
-                        href={getAmazonSearchUrl(volume.isbn)}
-                        target="_blank"
-                        rel="noreferrer"
-                        className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
-                      >
-                        Amazon
-                      </a>
-                    </div>
+                  <p className="text-base font-semibold text-white/80">
+                    {volume.featuredLabel}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    <a
+                      href={volume.itemUrl ?? getRakutenSearchUrl(volume.isbn)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+                    >
+                      楽天
+                    </a>
+                    <a
+                      href={getAmazonSearchUrl(volume.isbn)}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+                    >
+                      Amazon
+                    </a>
                   </div>
                 </div>
               ))}
@@ -303,12 +301,12 @@ function getFeaturedVolumes(
   }
 
   if (firstVolume.isbn === latestVolume.isbn) {
-    return [{ ...firstVolume, featuredLabel: "1巻 / 最新刊" }];
+    return [{ ...firstVolume, featuredLabel: "1巻 / 最新巻" }];
   }
 
   return [
     { ...firstVolume, featuredLabel: "1巻" },
-    { ...latestVolume, featuredLabel: "最新刊" },
+    { ...latestVolume, featuredLabel: "最新巻" },
   ];
 }
 
