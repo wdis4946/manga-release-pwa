@@ -14,6 +14,9 @@ type PublicSeriesDetailResponse = {
   series: PublicSeriesDetail;
 };
 
+type PublicSeriesVolume =
+  PublicSeriesDetail["categories"][number]["volumes"][number];
+
 export function MangaCard({ manga }: MangaCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [series, setSeries] = useState<PublicSeriesDetail | null>(null);
@@ -149,6 +152,7 @@ function SeriesModalBody({
   coverImageUrl: string;
 }) {
   const labels = series.genres;
+  const firstVolume = getFirstVolume(series.categories);
 
   return (
     <div className="h-full overflow-hidden">
@@ -188,7 +192,7 @@ function SeriesModalBody({
           ) : null}
 
           {series.description ? (
-            <p className="mt-6 line-clamp-6 text-xl leading-[1.9] text-[#d0d7ee]">
+            <p className="mt-6 line-clamp-[9] text-xl leading-[1.9] text-[#d0d7ee]">
               {series.description}
             </p>
           ) : (
@@ -196,8 +200,62 @@ function SeriesModalBody({
               あらすじはまだ登録されていません。
             </p>
           )}
+
+          {firstVolume ? (
+            <div className="mt-auto flex justify-end gap-3 pt-6">
+              <a
+                href={getAmazonSearchUrl(firstVolume.isbn)}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-xl border border-white/10 bg-white/[0.08] px-5 py-3 text-base font-semibold text-white/85 transition hover:bg-white/[0.14] hover:text-white"
+              >
+                Amazon
+              </a>
+              <a
+                href={firstVolume.itemUrl ?? getRakutenSearchUrl(firstVolume.isbn)}
+                target="_blank"
+                rel="noreferrer"
+                className="rounded-xl border border-white/10 bg-white/[0.08] px-5 py-3 text-base font-semibold text-white/85 transition hover:bg-white/[0.14] hover:text-white"
+              >
+                楽天市場
+              </a>
+            </div>
+          ) : null}
         </div>
       </section>
     </div>
   );
+}
+
+function getFirstVolume(
+  categories: PublicSeriesDetail["categories"],
+): PublicSeriesVolume | null {
+  const firstVolume = categories
+    .flatMap((category) =>
+      category.volumes.map((volume) => ({
+        categoryNumber: category.categoryNumber,
+        volume,
+      })),
+    )
+    .sort((left, right) => {
+      if (left.categoryNumber !== right.categoryNumber) {
+        return left.categoryNumber - right.categoryNumber;
+      }
+
+      if (left.volume.displayOrder !== right.volume.displayOrder) {
+        return left.volume.displayOrder - right.volume.displayOrder;
+      }
+
+      return left.volume.isbn.localeCompare(right.volume.isbn);
+    })[0]?.volume;
+
+  return firstVolume ?? null;
+}
+
+function getAmazonSearchUrl(isbn: string) {
+  return `https://www.amazon.co.jp/s?k=${encodeURIComponent(isbn)}`;
+}
+
+function getRakutenSearchUrl(isbn: string) {
+  return `https://books.rakuten.co.jp/search?sitem=${encodeURIComponent(isbn)}`;
 }
