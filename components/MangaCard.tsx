@@ -192,17 +192,17 @@ function SeriesModalBody({
           ) : null}
 
           {series.description ? (
-            <p className="mt-6 line-clamp-[9] text-xl leading-[1.9] text-[#d0d7ee]">
+            <p className="mt-6 min-h-0 flex-1 overflow-y-auto pr-4 whitespace-pre-line text-xl leading-[1.9] text-[#d0d7ee] [scrollbar-color:rgba(255,255,255,0.5)_transparent] [scrollbar-width:thin] [&::-webkit-scrollbar]:w-2 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-white/50 [&::-webkit-scrollbar-track]:bg-transparent">
               {series.description}
             </p>
           ) : (
-            <p className="mt-6 text-base leading-[1.9] text-[#d0d7ee]/70">
+            <p className="mt-6 min-h-0 flex-1 text-base leading-[1.9] text-[#d0d7ee]/70">
               あらすじはまだ登録されていません。
             </p>
           )}
 
           {firstVolume ? (
-            <div className="mt-auto flex justify-end gap-3 pt-6">
+            <div className="flex justify-end gap-3 pt-5">
               <a
                 href={getAmazonSearchUrl(firstVolume.isbn)}
                 target="_blank"
