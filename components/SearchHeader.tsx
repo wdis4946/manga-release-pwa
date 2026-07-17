@@ -89,13 +89,13 @@ function SuggestionGroup({
 
   return (
     <div className="border-b border-white/8 last:border-b-0">
-      <p className="px-4 pt-3 text-xs font-bold text-[#8d98bd]">{label}</p>
+      <p className="px-4 pt-3 text-base font-bold text-[#8d98bd]">{label}</p>
       <div className="py-2">
         {suggestions.map((suggestion) => (
           <a
             key={`${paramName}-${suggestion.id}`}
             href={`/?${paramName}=${encodeURIComponent(suggestion.name)}`}
-            className="block px-4 py-2 text-sm font-semibold text-white/85 transition hover:bg-white/8 hover:text-white"
+            className="block px-4 py-2 text-base font-semibold text-white/85 transition hover:bg-white/8 hover:text-white"
           >
             {suggestion.name}
           </a>

@@ -125,7 +125,7 @@ export function MangaCard({ manga }: MangaCardProps) {
                 <LoaderCircle className="size-7 animate-spin text-white/70" />
               </div>
             ) : error ? (
-              <p className="flex min-h-[360px] items-center justify-center px-6 text-center text-sm text-white/60">
+              <p className="flex min-h-[360px] items-center justify-center px-6 text-center text-base text-white/60">
                 {error}
               </p>
             ) : series ? (
@@ -170,7 +170,7 @@ function SeriesModalBody({
             {series.title}
           </h1>
           {series.authors.length > 0 ? (
-            <p className="mt-3 text-sm font-medium text-[#a8b2d6]">
+            <p className="mt-3 text-base font-medium text-[#a8b2d6]">
               {series.authors.join("、")}
             </p>
           ) : null}
@@ -179,7 +179,7 @@ function SeriesModalBody({
               {labels.map((label) => (
                 <span
                   key={label}
-                  className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-xs font-medium text-[#eff3ff]"
+                  className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-[#eff3ff]"
                 >
                   {label}
                 </span>
@@ -188,11 +188,11 @@ function SeriesModalBody({
           ) : null}
 
           {series.description ? (
-            <p className="mt-6 whitespace-pre-line text-sm leading-[1.9] text-[#d0d7ee]">
+            <p className="mt-6 whitespace-pre-line text-base leading-[1.9] text-[#d0d7ee]">
               {series.description}
             </p>
           ) : (
-            <p className="mt-6 text-sm leading-[1.9] text-[#d0d7ee]/70">
+            <p className="mt-6 text-base leading-[1.9] text-[#d0d7ee]/70">
               あらすじはまだ登録されていません。
             </p>
           )}
@@ -209,7 +209,7 @@ function SeriesModalBody({
 function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
   if (series.categories.length === 0) {
     return (
-      <p className="bg-transparent px-4 py-6 text-sm text-white/55">
+      <p className="bg-transparent px-4 py-6 text-base text-white/55">
         巻情報はまだ登録されていません。
       </p>
     );
@@ -220,10 +220,10 @@ function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
       {series.categories.map((category) => (
         <div key={category.categoryNumber} className="bg-transparent">
           <div className="flex items-center justify-between gap-3">
-            <h3 className="text-sm font-semibold text-white/90">
+            <h3 className="text-base font-semibold text-white/90">
               {category.categoryName}
             </h3>
-            <span className="text-xs text-white/45">{category.itemCount}冊</span>
+            <span className="text-base text-white/45">{category.itemCount}冊</span>
           </div>
           {category.volumes.length > 0 ? (
             <div className="mt-3 grid grid-cols-3 gap-3 sm:grid-cols-4 lg:grid-cols-5 2xl:grid-cols-6">
@@ -246,16 +246,16 @@ function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
                         sizes="(max-width: 640px) 30vw, (max-width: 1024px) 18vw, 120px"
                       />
                     ) : (
-                      <div className="flex size-full items-center justify-center px-2 text-center text-[11px] text-white/45">
+                      <div className="flex size-full items-center justify-center px-2 text-center text-base text-white/45">
                         no image
                       </div>
                     )}
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-white/80">
+                    <p className="text-base font-semibold text-white/80">
                       {volume.label}
                     </p>
-                    <p className="line-clamp-2 text-[11px] leading-4 text-white/55">
+                    <p className="line-clamp-2 text-base leading-6 text-white/55">
                       {volume.title}
                     </p>
                   </div>
@@ -263,7 +263,7 @@ function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
               ))}
             </div>
           ) : (
-            <p className="mt-3 text-xs text-white/45">
+            <p className="mt-3 text-base text-white/45">
               表示できる巻情報がありません。
             </p>
           )}
