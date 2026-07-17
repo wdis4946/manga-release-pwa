@@ -17,10 +17,6 @@ type PublicSeriesDetailResponse = {
 type PublicSeriesVolume =
   PublicSeriesDetail["categories"][number]["volumes"][number];
 
-type FeaturedSeriesVolume = PublicSeriesVolume & {
-  featuredLabel: string;
-};
-
 export function MangaCard({ manga }: MangaCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [series, setSeries] = useState<PublicSeriesDetail | null>(null);
@@ -156,7 +152,7 @@ function SeriesModalBody({
   coverImageUrl: string;
 }) {
   const labels = series.genres;
-  const categoryNames = series.categories.map((category) => category.categoryName);
+  const firstVolume = getFirstVolume(series.categories);
 
   return (
     <div className="h-full overflow-hidden">
@@ -174,14 +170,14 @@ function SeriesModalBody({
         </div>
 
         <div className="flex h-full flex-col overflow-hidden bg-gradient-to-b from-white/[0.03] to-white/[0.01] p-6 md:p-9">
-          {categoryNames.length > 0 ? (
+          {labels.length > 0 ? (
             <div className="mb-3 flex flex-wrap gap-2">
-              {categoryNames.map((categoryName) => (
+              {labels.map((label) => (
                 <span
-                  key={categoryName}
+                  key={label}
                   className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-[#cad3f6]"
                 >
-                  {categoryName}
+                  {label}
                 </span>
               ))}
             </div>
@@ -193,18 +189,6 @@ function SeriesModalBody({
             <p className="mt-3 text-base font-medium text-[#a8b2d6]">
               {series.authors.join("、")}
             </p>
-          ) : null}
-          {labels.length > 0 ? (
-            <div className="mt-4 flex flex-wrap gap-2">
-              {labels.map((label) => (
-                <span
-                  key={label}
-                  className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-[#eff3ff]"
-                >
-                  {label}
-                </span>
-              ))}
-            </div>
           ) : null}
 
           {series.description ? (
@@ -218,7 +202,7 @@ function SeriesModalBody({
           )}
 
           <div className="mt-7 min-h-0 overflow-hidden border-t border-white/8 pt-6">
-            <SeriesCategoryVolumes series={series} />
+            <SeriesFirstVolumeLinks volume={firstVolume} />
           </div>
         </div>
       </section>
@@ -226,8 +210,12 @@ function SeriesModalBody({
   );
 }
 
-function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
-  if (series.categories.length === 0) {
+function SeriesFirstVolumeLinks({
+  volume,
+}: {
+  volume: PublicSeriesVolume | null;
+}) {
+  if (!volume) {
     return (
       <p className="bg-transparent px-4 py-6 text-base text-white/55">
         巻情報はまだ登録されていません。
@@ -236,85 +224,51 @@ function SeriesCategoryVolumes({ series }: { series: PublicSeriesDetail }) {
   }
 
   return (
-    <div className="space-y-4">
-      {series.categories.map((category) => (
-        <div key={category.categoryNumber} className="bg-transparent">
-          {category.volumes.length > 0 ? (
-            <div className="grid grid-cols-2 gap-4">
-              {getFeaturedVolumes(category.volumes).map((volume) => (
-                <div
-                  key={`${category.categoryNumber}:${volume.featuredLabel}:${volume.isbn}`}
-                  className="grid min-w-0 gap-2"
-                >
-                  <div className="relative aspect-[2/3] w-full overflow-hidden rounded-lg bg-white/10">
-                    {volume.coverImageUrl ? (
-                      <Image
-                        src={volume.coverImageUrl}
-                        alt={volume.title}
-                        fill
-                        unoptimized
-                        className="object-contain transition group-hover:scale-[1.03]"
-                        sizes="(max-width: 768px) 50vw, 220px"
-                      />
-                    ) : (
-                      <div className="flex size-full items-center justify-center px-2 text-center text-base text-white/45">
-                        no image
-                      </div>
-                    )}
-                  </div>
-                  <p className="text-base font-semibold text-white/80">
-                    {volume.featuredLabel}
-                  </p>
-                  <div className="flex flex-wrap gap-2">
-                    <a
-                      href={volume.itemUrl ?? getRakutenSearchUrl(volume.isbn)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
-                    >
-                      楽天
-                    </a>
-                    <a
-                      href={getAmazonSearchUrl(volume.isbn)}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
-                    >
-                      Amazon
-                    </a>
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <p className="mt-3 text-base text-white/45">
-              表示できる巻情報がありません。
-            </p>
-          )}
-        </div>
-      ))}
+    <div className="flex flex-wrap items-center gap-2">
+      <span className="text-base font-semibold text-white/80">1巻</span>
+      <a
+        href={volume.itemUrl ?? getRakutenSearchUrl(volume.isbn)}
+        target="_blank"
+        rel="noreferrer"
+        className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+      >
+        楽天
+      </a>
+      <a
+        href={getAmazonSearchUrl(volume.isbn)}
+        target="_blank"
+        rel="noreferrer"
+        className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
+      >
+        Amazon
+      </a>
     </div>
   );
 }
 
-function getFeaturedVolumes(
-  volumes: PublicSeriesVolume[],
-): FeaturedSeriesVolume[] {
-  const firstVolume = volumes[0];
-  const latestVolume = volumes[volumes.length - 1];
+function getFirstVolume(
+  categories: PublicSeriesDetail["categories"],
+): PublicSeriesVolume | null {
+  const firstVolume = categories
+    .flatMap((category) =>
+      category.volumes.map((volume) => ({
+        categoryNumber: category.categoryNumber,
+        volume,
+      })),
+    )
+    .sort((left, right) => {
+      if (left.categoryNumber !== right.categoryNumber) {
+        return left.categoryNumber - right.categoryNumber;
+      }
 
-  if (!firstVolume || !latestVolume) {
-    return [];
-  }
+      if (left.volume.displayOrder !== right.volume.displayOrder) {
+        return left.volume.displayOrder - right.volume.displayOrder;
+      }
 
-  if (firstVolume.isbn === latestVolume.isbn) {
-    return [{ ...firstVolume, featuredLabel: "1巻 / 最新巻" }];
-  }
+      return left.volume.isbn.localeCompare(right.volume.isbn);
+    })[0]?.volume;
 
-  return [
-    { ...firstVolume, featuredLabel: "1巻" },
-    { ...latestVolume, featuredLabel: "最新巻" },
-  ];
+  return firstVolume ?? null;
 }
 
 function getAmazonSearchUrl(isbn: string) {
