@@ -14,9 +14,6 @@ type PublicSeriesDetailResponse = {
   series: PublicSeriesDetail;
 };
 
-type PublicSeriesVolume =
-  PublicSeriesDetail["categories"][number]["volumes"][number];
-
 export function MangaCard({ manga }: MangaCardProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [series, setSeries] = useState<PublicSeriesDetail | null>(null);
@@ -152,7 +149,6 @@ function SeriesModalBody({
   coverImageUrl: string;
 }) {
   const labels = series.genres;
-  const firstVolume = getFirstVolume(series.categories);
 
   return (
     <div className="h-full overflow-hidden">
@@ -170,8 +166,16 @@ function SeriesModalBody({
         </div>
 
         <div className="flex h-full flex-col overflow-hidden bg-gradient-to-b from-white/[0.03] to-white/[0.01] p-6 md:p-9">
+          <h1 className="pr-12 text-[28px] font-bold leading-[1.3] tracking-normal text-[#f5f7ff] sm:text-[34px]">
+            {series.title}
+          </h1>
+          {series.authors.length > 0 ? (
+            <p className="mt-3 text-base font-medium text-[#a8b2d6]">
+              {series.authors.join("、")}
+            </p>
+          ) : null}
           {labels.length > 0 ? (
-            <div className="mb-3 flex flex-wrap gap-2">
+            <div className="mt-4 flex flex-wrap gap-2">
               {labels.map((label) => (
                 <span
                   key={label}
@@ -181,14 +185,6 @@ function SeriesModalBody({
                 </span>
               ))}
             </div>
-          ) : null}
-          <h1 className="pr-12 text-[28px] font-bold leading-[1.3] tracking-normal text-[#f5f7ff] sm:text-[34px]">
-            {series.title}
-          </h1>
-          {series.authors.length > 0 ? (
-            <p className="mt-3 text-base font-medium text-[#a8b2d6]">
-              {series.authors.join("、")}
-            </p>
           ) : null}
 
           {series.description ? (
@@ -200,81 +196,8 @@ function SeriesModalBody({
               あらすじはまだ登録されていません。
             </p>
           )}
-
-          <div className="mt-7 min-h-0 overflow-hidden border-t border-white/8 pt-6">
-            <SeriesFirstVolumeLinks volume={firstVolume} />
-          </div>
         </div>
       </section>
     </div>
   );
-}
-
-function SeriesFirstVolumeLinks({
-  volume,
-}: {
-  volume: PublicSeriesVolume | null;
-}) {
-  if (!volume) {
-    return (
-      <p className="bg-transparent px-4 py-6 text-base text-white/55">
-        巻情報はまだ登録されていません。
-      </p>
-    );
-  }
-
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <span className="text-base font-semibold text-white/80">1巻</span>
-      <a
-        href={volume.itemUrl ?? getRakutenSearchUrl(volume.isbn)}
-        target="_blank"
-        rel="noreferrer"
-        className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
-      >
-        楽天
-      </a>
-      <a
-        href={getAmazonSearchUrl(volume.isbn)}
-        target="_blank"
-        rel="noreferrer"
-        className="rounded-full border border-white/8 bg-white/6 px-3 py-1.5 text-base font-medium text-white/80 transition hover:bg-white/10 hover:text-white"
-      >
-        Amazon
-      </a>
-    </div>
-  );
-}
-
-function getFirstVolume(
-  categories: PublicSeriesDetail["categories"],
-): PublicSeriesVolume | null {
-  const firstVolume = categories
-    .flatMap((category) =>
-      category.volumes.map((volume) => ({
-        categoryNumber: category.categoryNumber,
-        volume,
-      })),
-    )
-    .sort((left, right) => {
-      if (left.categoryNumber !== right.categoryNumber) {
-        return left.categoryNumber - right.categoryNumber;
-      }
-
-      if (left.volume.displayOrder !== right.volume.displayOrder) {
-        return left.volume.displayOrder - right.volume.displayOrder;
-      }
-
-      return left.volume.isbn.localeCompare(right.volume.isbn);
-    })[0]?.volume;
-
-  return firstVolume ?? null;
-}
-
-function getAmazonSearchUrl(isbn: string) {
-  return `https://www.amazon.co.jp/s?k=${encodeURIComponent(isbn)}`;
-}
-
-function getRakutenSearchUrl(isbn: string) {
-  return `https://books.rakuten.co.jp/search?sitem=${encodeURIComponent(isbn)}`;
 }
