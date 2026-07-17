@@ -102,7 +102,7 @@ export function InfiniteMangaGrid({
       <MangaGrid manga={manga} />
       <div ref={sentinelRef} className="h-10" aria-hidden="true" />
       {isLoading ? (
-        <p className="py-4 text-center text-base font-medium text-[#8d98bd]">
+        <p className="py-4 text-center text-xl font-medium text-[#8d98bd]">
           読み込み中
         </p>
       ) : null}
